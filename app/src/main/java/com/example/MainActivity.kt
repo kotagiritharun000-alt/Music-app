@@ -1,7 +1,7 @@
 package com.example
 
-import android.Manifest
-import android.content.pm.PackageManager
+import android.app.Activity
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,7 +26,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 import com.example.muse.ai.LyricsAiChatbot
 import com.example.muse.ai.VoiceAction
 import com.example.muse.ai.VoiceAiAssistant
@@ -36,8 +35,12 @@ import com.example.muse.model.BgmStem
 import com.example.muse.model.DownloadedAsset
 import com.example.muse.model.Song
 import com.example.muse.model.ToneExportType
+import com.example.muse.permission.MicrophonePermissionManager
+import com.example.muse.permission.MicrophonePermissionUiState
 import com.example.muse.ui.components.AudioTrimmerDialog
 import com.example.muse.ui.components.LyricsChatbotSheet
+import com.example.muse.ui.components.MicrophoneRationaleDialog
+import com.example.muse.ui.components.MicrophoneSettingsDialog
 import com.example.muse.ui.components.PrdArchitectureSheet
 import com.example.muse.ui.components.SpatialAudioDialog
 import com.example.muse.ui.components.VoiceAssistantOverlay
@@ -49,31 +52,59 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var permissionManager: MicrophonePermissionManager
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { _: Boolean -> }
+    ) { isGranted: Boolean ->
+        permissionManager.onPermissionResult(isGranted, this)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
+        permissionManager = MicrophonePermissionManager(applicationContext)
 
         setContent {
             MyApplicationTheme {
-                MuseAppRoot()
+                MuseAppRoot(
+                    permissionManager = permissionManager,
+                    onRequestMicPermission = { onGranted ->
+                        permissionManager.requestOrExecute(
+                            activity = this,
+                            launcher = requestPermissionLauncher,
+                            onGrantedAction = onGranted
+                        )
+                    },
+                    onLaunchDirectMicRequest = {
+                        permissionManager.launchDirectRequest(requestPermissionLauncher)
+                    }
+                )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::permissionManager.isInitialized) {
+            permissionManager.syncCurrentState(applicationContext)
         }
     }
 }
 
 @Composable
-fun MuseAppRoot() {
+fun MuseAppRoot(
+    permissionManager: MicrophonePermissionManager,
+    onRequestMicPermission: (onGranted: () -> Unit) -> Unit,
+    onLaunchDirectMicRequest: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Permission State Flow
+    val permissionUiState by permissionManager.uiState.collectAsState()
 
     // Audio Engine & AI Assistant Singletons
     val audioEngine = remember { ProceduralAudioEngine(scope) }
@@ -301,8 +332,10 @@ fun MuseAppRoot() {
                     },
                     onOpenSpatialDialog = { showSpatialDialog = true },
                     onOpenVoiceAssistant = {
-                        voiceAssistant.startListening { action -> handleVoiceAction(action) }
                         showVoiceOverlay = true
+                        onRequestMicPermission {
+                            voiceAssistant.startListening { action -> handleVoiceAction(action) }
+                        }
                     },
                     onOpenLyricsChat = { showLyricsSheet = true },
                     onOpenPrdSheet = { showPrdSheet = true },
@@ -350,8 +383,16 @@ fun MuseAppRoot() {
                     state = voiceState,
                     currentVolume = currentVolume,
                     isMuted = isMuted,
+                    isPermissionGranted = permissionUiState.isGranted,
+                    onRequestPermission = {
+                        onRequestMicPermission {
+                            voiceAssistant.startListening { action -> handleVoiceAction(action) }
+                        }
+                    },
                     onStartListening = {
-                        voiceAssistant.startListening { action -> handleVoiceAction(action) }
+                        onRequestMicPermission {
+                            voiceAssistant.startListening { action -> handleVoiceAction(action) }
+                        }
                     },
                     onStopListening = {
                         voiceAssistant.stopListening()
@@ -431,6 +472,30 @@ fun MuseAppRoot() {
             if (showPrdSheet) {
                 PrdArchitectureSheet(
                     onDismiss = { showPrdSheet = false }
+                )
+            }
+
+            // 6. Microphone Permission Rationale Dialog
+            if (permissionUiState.showRationaleDialog) {
+                MicrophoneRationaleDialog(
+                    onGrantClick = {
+                        onLaunchDirectMicRequest()
+                    },
+                    onDismiss = {
+                        permissionManager.dismissRationale()
+                    }
+                )
+            }
+
+            // 7. Microphone Permanently Denied Settings Dialog
+            if (permissionUiState.showSettingsDialog) {
+                MicrophoneSettingsDialog(
+                    onOpenSettingsClick = {
+                        permissionManager.openAppSettings(context)
+                    },
+                    onDismiss = {
+                        permissionManager.dismissSettingsDialog()
+                    }
                 )
             }
         }

@@ -70,6 +70,8 @@ fun VoiceAssistantOverlay(
     state: VoiceAssistantState,
     currentVolume: Int,
     isMuted: Boolean,
+    isPermissionGranted: Boolean = true,
+    onRequestPermission: () -> Unit = {},
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
     onExecuteCommand: (String) -> Unit,
@@ -137,7 +139,41 @@ fun VoiceAssistantOverlay(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                // Permission Status Chip
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isPermissionGranted) MuseColors.CardSurface
+                            else MuseColors.RosePink.copy(alpha = 0.15f)
+                        )
+                        .border(
+                            1.dp,
+                            if (isPermissionGranted) MuseColors.CardBorder
+                            else MuseColors.RosePink.copy(alpha = 0.4f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .clickable(enabled = !isPermissionGranted) { onRequestPermission() }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isPermissionGranted) Icons.Default.Mic else Icons.Default.MicOff,
+                        contentDescription = "Permission Status",
+                        tint = if (isPermissionGranted) MuseColors.PrimaryAccent else MuseColors.RosePink,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = if (isPermissionGranted) "Microphone Ready" else "Tap to Grant Mic Permission",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isPermissionGranted) MuseColors.TextSecondary else MuseColors.RosePink
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Animated Holographic Voice AI Orb
                 Box(
@@ -145,7 +181,11 @@ fun VoiceAssistantOverlay(
                         .size(130.dp)
                         .clip(CircleShape)
                         .clickable {
-                            if (state.isListening) onStopListening() else onStartListening()
+                            if (!isPermissionGranted) {
+                                onRequestPermission()
+                            } else {
+                                if (state.isListening) onStopListening() else onStartListening()
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -189,7 +229,7 @@ fun VoiceAssistantOverlay(
                     }
 
                     Icon(
-                        imageVector = if (state.isListening) Icons.Default.GraphicEq else Icons.Default.Mic,
+                        imageVector = if (state.isListening) Icons.Default.GraphicEq else if (isPermissionGranted) Icons.Default.Mic else Icons.Default.MicOff,
                         contentDescription = "Microphone",
                         tint = Color.White,
                         modifier = Modifier.size(34.dp)
@@ -200,10 +240,18 @@ fun VoiceAssistantOverlay(
 
                 // Listening Status / Wake Word prompt
                 Text(
-                    text = if (state.isListening) "🎙️ Listening... Say 'Hey Muse' or a command" else "Tap Orb to Speak or Say 'Hey Muse'",
+                    text = when {
+                        !isPermissionGranted -> "⚠️ Mic Permission Needed for 'Hey Muse'"
+                        state.isListening -> "🎙️ Listening... Say 'Hey Muse' or a command"
+                        else -> "Tap Orb to Speak or Say 'Hey Muse'"
+                    },
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (state.isListening) MuseColors.PrimaryAccent else MuseColors.TextSecondary
+                    color = when {
+                        !isPermissionGranted -> MuseColors.RosePink
+                        state.isListening -> MuseColors.PrimaryAccent
+                        else -> MuseColors.TextSecondary
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
