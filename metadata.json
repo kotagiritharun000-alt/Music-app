@@ -1,6 +1,6 @@
 {
   "name": "Muse",
-  "description": "A premium, ad-free music streaming and audio utility mobile application featuring Muse Voice AI assistant, Dolby Atmos & Spatial Audio, multi-stem BGM extractor, millisecond audio trimmer, and synced lyrics intelligence.",
+  "description": "A premium, ad-free music streaming and audio utility web application featuring Muse Voice AI assistant, Dolby Atmos & Spatial Audio, multi-stem BGM extractor, millisecond audio trimmer, and synced lyrics intelligence.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
