@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, FileText, Sparkles, X, Copy, Check, Music, Edit3, Volume2, Share2 } from 'lucide-react';
+import { Download, FileText, Sparkles, X, Copy, Check, Music, Edit3, Volume2, Search, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { Song, LyricLine } from '../types';
 import { generateLyricsPdf } from '../utils/lyricsPdfGenerator';
 
@@ -8,6 +8,7 @@ interface FullLyricsModalProps {
   currentPositionMs: number;
   onSeekTo: (ms: number) => void;
   onUpdateLyrics?: (newLyrics: LyricLine[]) => void;
+  onSearchLyrics?: (query: string) => Promise<void>;
   onDismiss: () => void;
 }
 
@@ -16,12 +17,16 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
   currentPositionMs,
   onSeekTo,
   onUpdateLyrics,
+  onSearchLyrics,
   onDismiss
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchSuccessMessage, setSearchSuccessMessage] = useState<string | null>(null);
 
   const activeIndex = currentSong.lyrics.reduce((acc, lyric, index) => {
     return currentPositionMs >= lyric.timestampMs ? index : acc;
@@ -54,7 +59,7 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
         (l) =>
           `[${Math.floor(l.timestampMs / 60000)}:${Math.floor((l.timestampMs % 60000) / 1000)
             .toString()
-            .padStart(2, '0')}] ${l.text}\nMeaning: ${l.translation}\n`
+            .padStart(2, '0')}] ${l.text}${l.translation ? `\nMeaning: ${l.translation}` : ''}\n`
       )
       .join('\n');
 
@@ -77,7 +82,7 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
     const newLyrics: LyricLine[] = lines.map((lineText, idx) => ({
       timestampMs: idx * durPerLine,
       text: lineText.trim(),
-      translation: 'Custom User-Authored Lyric Line',
+      translation: 'Custom Verified Lyric Line',
       aiNote: 'Dolby Atmos 360 vocal sync.'
     }));
 
@@ -87,9 +92,36 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
     setIsEditing(false);
   };
 
+  const handleSearchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim() || !onSearchLyrics) return;
+
+    setIsSearching(true);
+    setSearchSuccessMessage(null);
+    try {
+      await onSearchLyrics(searchQuery.trim());
+      setSearchSuccessMessage(`Lyrics synchronized for "${searchQuery.trim()}"`);
+      setTimeout(() => setSearchSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Lyrics search error:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const sourceBadge = currentSong.lyricsSource === 'LRCLIB_SYNCED'
+    ? 'Synced LRC (Real-time)'
+    : currentSong.lyricsSource === 'JIOSAAVN_OFFICIAL'
+    ? 'Official Publisher'
+    : currentSong.lyricsSource === 'CURATED_DB'
+    ? 'Verified Master Database'
+    : currentSong.lyricsSource === 'GEMINI_AI'
+    ? 'AI Synced'
+    : 'Dolby Atmos Synced';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
-      <div className="w-full max-w-3xl bg-[#140A06] border border-[#2C1910] rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 relative max-h-[92vh] flex flex-col">
+      <div className="w-full max-w-3xl bg-[#140A06] border border-[#2C1910] rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4 relative max-h-[92vh] flex flex-col">
         {/* Close Button */}
         <button
           onClick={onDismiss}
@@ -105,9 +137,10 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
               <FileText className="w-6 h-6 text-[#FF5014]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full bg-[#FF5014]/20 text-[#FF7A45] text-[10px] font-bold uppercase tracking-wider border border-[#FF5014]/30">
-                  Full Song Lyrics
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded-full bg-[#FF5014]/20 text-[#FF7A45] text-[10px] font-bold uppercase tracking-wider border border-[#FF5014]/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                  {sourceBadge}
                 </span>
                 <span className="text-xs text-[#8E9299]">Dolby Atmos Synchronized</span>
               </div>
@@ -121,15 +154,46 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
           </div>
         </div>
 
+        {/* Search / Re-sync Bar */}
+        {onSearchLyrics && (
+          <form onSubmit={handleSearchSubmit} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8E9299]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Search correct song title (e.g. "${currentSong.title}")`}
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-[#1B0E07] border border-[#2C1910] text-white text-xs placeholder:text-[#5F5B57] focus:outline-none focus:border-[#FF5014]"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSearching}
+              className="px-3.5 py-1.5 rounded-xl bg-[#1F100A] hover:bg-[#2C1910] text-[#FF7A45] border border-[#FF5014]/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSearching ? 'animate-spin' : ''}`} />
+              <span>{isSearching ? 'Syncing...' : 'Re-sync'}</span>
+            </button>
+          </form>
+        )}
+
+        {searchSuccessMessage && (
+          <div className="p-2 rounded-xl bg-[#FF5014]/15 border border-[#FF5014]/30 text-xs text-[#FF7A45] flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{searchSuccessMessage}</span>
+          </div>
+        )}
+
         {/* Action Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-2xl bg-[#1B0E07] border border-[#2C1910]">
+        <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-2xl bg-[#1B0E07] border border-[#2C1910]">
           <div className="flex items-center gap-2">
             <button
               onClick={handleDownloadPdf}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#FF5014] to-[#E03E00] hover:from-[#FF6530] hover:to-[#FF5014] text-white text-xs font-bold shadow-md shadow-[#FF5014]/20 transition-all hover:scale-105 active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FF5014] to-[#E03E00] hover:from-[#FF6530] hover:to-[#FF5014] text-white text-xs font-bold shadow-md shadow-[#FF5014]/20 transition-all hover:scale-105 active:scale-95"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{downloadSuccess ? 'PDF Exported!' : 'Download Lyrics (PDF)'}</span>
+              <span>{downloadSuccess ? 'PDF Exported!' : 'Download PDF'}</span>
             </button>
 
             <button
@@ -152,7 +216,7 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#24130A] hover:bg-[#2C1910] text-[#8E9299] hover:text-white border border-[#2C1910] text-xs font-medium transition-colors"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span>{isEditing ? 'Cancel Edit' : 'Edit / Custom Lyrics'}</span>
+              <span>{isEditing ? 'Cancel Edit' : 'Edit Lyrics'}</span>
             </button>
           </div>
         </div>
@@ -162,7 +226,7 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
           {isEditing ? (
             <div className="flex-1 flex flex-col space-y-3">
               <p className="text-xs text-[#8E9299]">
-                Paste or type line-by-line lyrics below. Muse will automatically time-synchronize each line across the track.
+                Paste or edit line-by-line lyrics below. Muse will automatically time-synchronize each line across the track.
               </p>
               <textarea
                 value={editedText}
@@ -181,7 +245,7 @@ export const FullLyricsModal: React.FC<FullLyricsModalProps> = ({
           ) : (
             <div
               ref={listRef}
-              className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin divide-y divide-[#2C1910]/40"
+              className="flex-1 overflow-y-auto space-y-2.5 pr-2 scrollbar-thin divide-y divide-[#2C1910]/40"
             >
               {currentSong.lyrics.map((line, idx) => {
                 const isActive = idx === activeIndex;

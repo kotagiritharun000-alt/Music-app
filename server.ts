@@ -3,6 +3,19 @@ import cors from 'cors';
 import path from 'path';
 import CryptoJS from 'crypto-js';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
+
+let genAIClient: GoogleGenAI | null = null;
+function getGenAI(): GoogleGenAI | null {
+  if (!genAIClient && process.env.GEMINI_API_KEY) {
+    try {
+      genAIClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    } catch (e) {
+      console.warn('GoogleGenAI initialization failed:', e);
+    }
+  }
+  return genAIClient;
+}
 
 const app = express();
 const PORT = 3000;
@@ -252,6 +265,236 @@ async function handleLyrics(req: Request, res: Response) {
 app.get('/lyrics', handleLyrics);
 app.get('/lyrics/', handleLyrics);
 app.get('/api/jiosaavn/lyrics', handleLyrics);
+
+// 5b. Multi-Source Verified Synced Lyrics Engine (/api/lyrics/sync)
+const serverLyricsCache = new Map<string, any>();
+
+function parseLrcServer(lrcText: string, durationSec: number = 180): any[] {
+  const lines = lrcText.split('\n');
+  const result: any[] = [];
+  const timeRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+  let hasTimestamp = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || /^\[(ti|ar|al|by|offset|length):/i.test(trimmed)) continue;
+
+    const matches = Array.from(trimmed.matchAll(timeRegex));
+    if (matches.length > 0) {
+      hasTimestamp = true;
+      const text = trimmed.replace(timeRegex, '').trim();
+      if (text) {
+        for (const m of matches) {
+          const min = parseInt(m[1], 10);
+          const sec = parseInt(m[2], 10);
+          const msFrac = m[3] ? parseInt(m[3].padEnd(3, '0').slice(0, 3), 10) : 0;
+          result.push({
+            timestampMs: (min * 60 + sec) * 1000 + msFrac,
+            text,
+            translation: undefined
+          });
+        }
+      }
+    }
+  }
+
+  if (hasTimestamp && result.length > 0) {
+    result.sort((a, b) => a.timestampMs - b.timestampMs);
+    return result;
+  }
+
+  const plain = lrcText.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !/^\[(ti|ar|al):/i.test(l));
+  const stepMs = Math.floor((durationSec * 1000) / Math.max(1, plain.length));
+  return plain.map((text, idx) => ({
+    timestampMs: idx * stepMs,
+    text,
+    translation: undefined
+  }));
+}
+
+function cleanTitleForQuery(raw: string): string {
+  if (!raw) return '';
+  let s = cleanHtml(raw);
+  s = s.replace(/[\(\[](from|feat|ft|with|couples? song|official|video|lyrical|audio|full video|telugu|hindi|tamil|kannada|malayalam|original|motion picture).*?[\)\]]/gi, '');
+  s = s.replace(/[-|].*$/, '');
+  s = s.replace(/["'“”]/g, '').trim();
+  return s;
+}
+
+function cleanArtistForQuery(raw?: string): string {
+  if (!raw) return '';
+  let s = cleanHtml(raw);
+  const parts = s.split(/[,/&;]/);
+  return parts[0].trim();
+}
+
+async function handleLyricsSync(req: Request, res: Response) {
+  const rawTitle = (req.query.title as string) || '';
+  const rawArtist = (req.query.artist as string) || '';
+  const album = (req.query.album as string) || '';
+  const durationSec = parseInt(req.query.duration as string, 10) || 180;
+  const songId = (req.query.id as string) || '';
+
+  if (!rawTitle) {
+    return res.status(400).json({ status: false, error: 'Song title is required for lyrics sync' });
+  }
+
+  const cleanTitle = cleanTitleForQuery(rawTitle) || rawTitle;
+  const cleanArtist = cleanArtistForQuery(rawArtist);
+  const cacheKey = `${cleanTitle.toLowerCase()}_${cleanArtist.toLowerCase()}`;
+
+  if (serverLyricsCache.has(cacheKey)) {
+    return res.json(serverLyricsCache.get(cacheKey));
+  }
+
+  // Tier 1: Search LRCLIB with clean title + artist
+  try {
+    const lrcQuery = `${cleanTitle} ${cleanArtist}`.trim();
+    const lrcUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(lrcQuery)}`;
+    const lrcRes = await fetch(lrcUrl, {
+      headers: { 'User-Agent': 'MuseMusicPlayer/1.0 (Server)' }
+    });
+    if (lrcRes.ok) {
+      const results = await lrcRes.json();
+      if (Array.isArray(results) && results.length > 0) {
+        const top = results[0];
+        if (top.syncedLyrics && top.syncedLyrics.trim().length > 0) {
+          const parsed = parseLrcServer(top.syncedLyrics, durationSec);
+          const responseData = {
+            status: true,
+            source: 'LRCLIB_SYNCED',
+            synced: true,
+            lyrics: parsed,
+            fullText: top.plainLyrics || top.syncedLyrics
+          };
+          serverLyricsCache.set(cacheKey, responseData);
+          return res.json(responseData);
+        } else if (top.plainLyrics && top.plainLyrics.trim().length > 0) {
+          const parsed = parseLrcServer(top.plainLyrics, durationSec);
+          const responseData = {
+            status: true,
+            source: 'LRCLIB_PLAIN',
+            synced: false,
+            lyrics: parsed,
+            fullText: top.plainLyrics
+          };
+          serverLyricsCache.set(cacheKey, responseData);
+          return res.json(responseData);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('LRCLIB title+artist search error:', err);
+  }
+
+  // Tier 2: Search LRCLIB with clean title alone
+  try {
+    const lrcUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(cleanTitle)}`;
+    const lrcRes = await fetch(lrcUrl, {
+      headers: { 'User-Agent': 'MuseMusicPlayer/1.0 (Server)' }
+    });
+    if (lrcRes.ok) {
+      const results = await lrcRes.json();
+      if (Array.isArray(results) && results.length > 0) {
+        const top = results[0];
+        if (top.syncedLyrics && top.syncedLyrics.trim().length > 0) {
+          const parsed = parseLrcServer(top.syncedLyrics, durationSec);
+          const responseData = {
+            status: true,
+            source: 'LRCLIB_SYNCED',
+            synced: true,
+            lyrics: parsed,
+            fullText: top.plainLyrics || top.syncedLyrics
+          };
+          serverLyricsCache.set(cacheKey, responseData);
+          return res.json(responseData);
+        } else if (top.plainLyrics && top.plainLyrics.trim().length > 0) {
+          const parsed = parseLrcServer(top.plainLyrics, durationSec);
+          const responseData = {
+            status: true,
+            source: 'LRCLIB_PLAIN',
+            synced: false,
+            lyrics: parsed,
+            fullText: top.plainLyrics
+          };
+          serverLyricsCache.set(cacheKey, responseData);
+          return res.json(responseData);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('LRCLIB title search error:', err);
+  }
+
+  // Tier 3: JioSaavn official lyrics check
+  if (songId) {
+    try {
+      const jioLyrics = await fetchLyricsText(songId);
+      if (jioLyrics && jioLyrics.trim().length > 0) {
+        const plainText = jioLyrics.replace(/<br\s*\/?>/gi, '\n');
+        const parsed = parseLrcServer(plainText, durationSec);
+        const responseData = {
+          status: true,
+          source: 'JIOSAAVN_OFFICIAL',
+          synced: false,
+          lyrics: parsed,
+          fullText: plainText
+        };
+        serverLyricsCache.set(cacheKey, responseData);
+        return res.json(responseData);
+      }
+    } catch (err) {
+      console.warn('JioSaavn lyrics error:', err);
+    }
+  }
+
+  // Tier 4: Google GenAI fallback for authentic song lyrics
+  const ai = getGenAI();
+  if (ai) {
+    try {
+      const prompt = `You are a music lyrics catalog expert. Provide the authentic, official lyrics for the song "${cleanTitle}" by artist "${cleanArtist || 'Original Artist'}" ${album ? `from "${album}"` : ''}.
+Return a JSON array of lyric objects with timestampMs estimated for a song of ${durationSec} seconds.
+Format:
+[
+  { "timestampMs": 0, "text": "First line of song", "translation": "English meaning" },
+  { "timestampMs": 12000, "text": "Second line of song", "translation": "English meaning" }
+]
+Only valid JSON array, no commentary.`;
+
+      const aiRes = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      if (aiRes.text) {
+        const parsedJson = JSON.parse(aiRes.text);
+        if (Array.isArray(parsedJson) && parsedJson.length > 0) {
+          const responseData = {
+            status: true,
+            source: 'GEMINI_AI',
+            synced: true,
+            lyrics: parsedJson,
+            fullText: parsedJson.map((l: any) => l.text).join('\n')
+          };
+          serverLyricsCache.set(cacheKey, responseData);
+          return res.json(responseData);
+        }
+      }
+    } catch (err) {
+      console.warn('Gemini lyrics generation error:', err);
+    }
+  }
+
+  return res.status(404).json({
+    status: false,
+    error: `Could not find lyrics for "${cleanTitle}"`
+  });
+}
+
+app.get('/api/lyrics/sync', handleLyricsSync);
 
 // 6. Unified Result endpoint (/result/)
 app.get('/result', handleSearch);

@@ -61,8 +61,26 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Audio Quality Badges */}
+        {/* Audio Quality Badges & Movie Poster Chip */}
         <div className="hidden md:flex items-center gap-2">
+          {currentSong.coverImage && (
+            <div
+              onClick={() => {
+                if (activeView !== 'player') onToggleView();
+              }}
+              className="flex items-center gap-2 px-2 py-1 rounded-md bg-[#1A100B] border border-[#2C1910] hover:border-[#FF5014]/40 cursor-pointer transition-all max-w-[200px] group"
+              title={`Now Playing Movie: ${currentSong.movieName || currentSong.album}`}
+            >
+              <img
+                src={currentSong.coverImage}
+                alt={currentSong.movieName || currentSong.album}
+                className="w-5 h-5 rounded object-cover border border-white/10 shrink-0 group-hover:scale-105 transition-transform"
+              />
+              <span className="text-[11px] font-medium text-white truncate">
+                {currentSong.movieName || currentSong.album}
+              </span>
+            </div>
+          )}
           {currentSong.isDolbyAtmos && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#1A100B] border border-[#FF5014]/30 text-[11px] font-semibold text-[#FF7A45]">
               <Sparkles className="w-3.5 h-3.5 text-[#FF5014]" />

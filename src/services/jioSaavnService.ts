@@ -130,63 +130,32 @@ export function convertJioSaavnToMuseSong(raw: JioSaavnSongRaw): Song {
   const gradientStart = isTelugu ? '#FF5014' : isTamil ? '#EC4899' : isHindi ? '#F59E0B' : '#6366F1';
   const gradientEnd = isTelugu ? '#8B2500' : isTamil ? '#831843' : isHindi ? '#78350F' : '#312E81';
 
-  // Check existing high-detail lyrics database
-  const knownLyrics = getFullLyricsForTrack(formatted.id);
+  // Check existing high-detail lyrics database using track name, artist, and album
+  const songNameQuery = formatted.song || formatted.title || '';
+  const knownLyrics = getFullLyricsForTrack(songNameQuery, formatted.singers, formatted.album, durationMs);
 
   // Generate synchronized lyric lines
   let lyrics = knownLyrics;
-  if (!lyrics || lyrics.length === 0) {
-    if (formatted.lyrics) {
-      // Split newline separated raw lyrics from JioSaavn lyrics API
-      const lines = formatted.lyrics
-        .split(/<br\s*\/?>|\n/gi)
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
+  if (formatted.lyrics) {
+    // Split newline/br separated raw lyrics from JioSaavn lyrics API
+    const rawLines = formatted.lyrics
+      .split(/<br\s*\/?>|\n/gi)
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
 
-      const stepMs = Math.max(3000, Math.floor(durationMs / Math.max(lines.length, 1)));
-      lyrics = lines.map((text, idx) => ({
+    if (rawLines.length > 0) {
+      const stepMs = Math.max(2500, Math.floor(durationMs / Math.max(rawLines.length, 1)));
+      lyrics = rawLines.map((text, idx) => ({
         timestampMs: idx * stepMs,
         text: decodeHtmlEntities(text),
-        translation: idx === 0 ? 'Official Muse Synced Lyrics' : undefined,
+        translation: idx === 0 ? `Official Lyrics: ${songNameQuery}` : undefined,
         aiNote: idx === 1 ? 'Dolby Atmos 360 Vocal Enhancement Active' : undefined
       }));
-    } else if (formatted.lyrics_snippet) {
-      lyrics = [
-        {
-          timestampMs: 0,
-          text: formatted.lyrics_snippet,
-          translation: 'Featured Song Hook',
-          aiNote: 'Dolby Atmos 360 Spatial Engine'
-        },
-        {
-          timestampMs: 15000,
-          text: `Music composed by ${formatted.music}`,
-          translation: 'Composer Spotlight',
-          aiNote: 'Acoustic Clarity Mode'
-        },
-        {
-          timestampMs: 30000,
-          text: `Vocals performed by ${formatted.singers}`,
-          translation: 'Lead Vocalist Track',
-          aiNote: 'Surround Sound Active'
-        }
-      ];
-    } else {
-      lyrics = [
-        {
-          timestampMs: 0,
-          text: `${formatted.song} - ${formatted.album}`,
-          translation: 'Direct 320 Kbps High-Definition Stream',
-          aiNote: 'Dolby Atmos 360 Spatial Audio'
-        },
-        {
-          timestampMs: 10000,
-          text: `Composer: ${formatted.music} | Singers: ${formatted.singers}`,
-          translation: 'Dolby Atmos Master Track',
-          aiNote: 'Isolated 5-Stem Simulation Enabled'
-        }
-      ];
     }
+  }
+
+  if (!lyrics || lyrics.length === 0) {
+    lyrics = getFullLyricsForTrack(songNameQuery, formatted.singers, formatted.album, durationMs);
   }
 
   // 5 Interactive Stem Stems for full Muse isolation
@@ -260,7 +229,8 @@ export function convertJioSaavnToMuseSong(raw: JioSaavnSongRaw): Song {
     coverImage: formatted.image,
     audioUrl: formatted.media_url || formatted.media_preview_url,
     stems,
-    lyrics
+    lyrics,
+    fullLyricsText: lyrics.map(l => l.text).join('\n')
   };
 }
 

@@ -23,6 +23,8 @@ interface PlayerControlsProps {
   volume: number;
   isMuted: boolean;
   isFavorite: boolean;
+  voiceFeedback?: string;
+  isVoiceListening?: boolean;
   onTogglePlayPause: () => void;
   onNextSong: () => void;
   onPreviousSong: () => void;
@@ -43,6 +45,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   volume,
   isMuted,
   isFavorite,
+  voiceFeedback,
+  isVoiceListening = false,
   onTogglePlayPause,
   onNextSong,
   onPreviousSong,
@@ -66,34 +70,88 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   return (
     <div className="w-full bg-[#130905] border border-[#2C1910] rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
-      {/* Title & Artist Row with Favorite */}
+      {/* Title & Artist Row with Movie Poster Thumbnail & Favorite */}
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg sm:text-xl font-bold text-white truncate drop-shadow-sm">
-              {currentSong.title}
-            </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#FF5014]/15 text-[#FF7A45] border border-[#FF5014]/30 whitespace-nowrap">
-              {currentSong.bpm} BPM
-            </span>
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Movie Poster Thumbnail */}
+          <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden bg-[#0E0604] border border-[#2C1910] shrink-0 shadow-md group">
+            <img
+              src={currentSong.coverImage || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&q=80'}
+              alt={currentSong.movieName || currentSong.album}
+              referrerPolicy="no-referrer"
+              className={`w-full h-full object-cover transition-transform duration-500 ${isPlaying ? 'scale-105' : 'scale-100'}`}
+            />
+            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
+            <div className="absolute top-0.5 left-0.5 px-1 py-0.2 rounded bg-black/70 text-[8px] font-bold text-amber-300">
+              POSTER
+            </div>
+            {isPlaying && (
+              <div className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            )}
           </div>
-          <p className="text-xs sm:text-sm text-[#8E9299] truncate font-medium mt-0.5">
-            {currentSong.artist} • <span className="text-[#E0D8D0]/70">{currentSong.album}</span>
-          </p>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-bold text-white truncate drop-shadow-sm">
+                {currentSong.title}
+              </h2>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#FF5014]/15 text-[#FF7A45] border border-[#FF5014]/30 whitespace-nowrap">
+                {currentSong.bpm} BPM
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-[#8E9299] truncate font-medium mt-0.5">
+              <span className="text-[#FF7A45] font-semibold">🎬 {currentSong.movieName || currentSong.album}</span>
+              {' '}• {currentSong.artist}
+              {currentSong.year && <span className="text-[#8E9299] font-mono"> ({currentSong.year})</span>}
+            </p>
+          </div>
         </div>
 
-        <button
-          onClick={onToggleFavorite}
-          className={`p-2.5 rounded-full border transition-transform active:scale-95 ${
-            isFavorite
-              ? 'bg-[#FF453A]/15 text-[#FF453A] border-[#FF453A]/40'
-              : 'bg-[#1A100B] text-[#8E9299] hover:text-white border-[#2C1910]'
-          }`}
-          title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
-        >
-          <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Hey Muse Voice Trigger */}
+          <button
+            onClick={onOpenVoiceAssistant}
+            title="Hey Muse Voice Assistant - Speak to switch songs, adjust volume, or pause"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+              isVoiceListening
+                ? 'bg-[#FF453A]/25 text-[#FF453A] border-[#FF453A] ring-2 ring-[#FF453A]/40 animate-pulse'
+                : 'bg-[#FF5014]/15 hover:bg-[#FF5014]/25 text-[#FF7A45] border-[#FF5014]/40 hover:border-[#FF5014]'
+            }`}
+          >
+            <Mic className={`w-3.5 h-3.5 ${isVoiceListening ? 'text-[#FF453A] animate-bounce' : 'text-[#FF5014]'}`} />
+            <span className="hidden sm:inline">Hey Muse</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5014] animate-ping" />
+          </button>
+
+          <button
+            onClick={onToggleFavorite}
+            className={`p-2.5 rounded-full border transition-transform active:scale-95 ${
+              isFavorite
+                ? 'bg-[#FF453A]/15 text-[#FF453A] border-[#FF453A]/40'
+                : 'bg-[#1A100B] text-[#8E9299] hover:text-white border-[#2C1910]'
+            }`}
+            title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+          >
+            <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
+          </button>
+        </div>
       </div>
+
+      {/* Voice Assistant Feedback Banner */}
+      {voiceFeedback && (
+        <div className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FF5014]/15 to-[#FF7A45]/10 border border-[#FF5014]/30 text-xs text-[#FF7A45] flex items-center justify-between gap-2 animate-in fade-in">
+          <div className="flex items-center gap-2 truncate">
+            <Mic className="w-3.5 h-3.5 text-[#FF5014] shrink-0 animate-pulse" />
+            <span className="truncate font-medium">{voiceFeedback}</span>
+          </div>
+          <button
+            onClick={onOpenVoiceAssistant}
+            className="text-[11px] underline hover:text-white shrink-0"
+          >
+            Open Voice
+          </button>
+        </div>
+      )}
 
       {/* Progress Scrubber */}
       <div className="space-y-1.5">

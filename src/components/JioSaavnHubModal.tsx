@@ -3,6 +3,9 @@ import {
   Search,
   Music,
   Play,
+  Pause,
+  SkipBack,
+  SkipForward,
   Sparkles,
   Download,
   Disc,
@@ -11,6 +14,9 @@ import {
   ShieldCheck,
   Flame,
   Volume2,
+  VolumeX,
+  Mic,
+  Film,
   Loader2,
   Headphones,
   Zap,
@@ -31,11 +37,21 @@ import {
   JioSaavnPlaylistMeta,
   JioSaavnPlaylistDetails
 } from '../services/jioSaavnService';
-import { Song } from '../types';
+import { Song, VoiceAssistantState } from '../types';
 
 interface JioSaavnHubModalProps {
+  currentSong?: Song;
   currentSongId?: string;
-  onSelectSong: (song: Song) => void;
+  isPlaying?: boolean;
+  volume?: number;
+  onSelectSong: (song: Song, contextQueue?: Song[]) => void;
+  onTogglePlayPause?: () => void;
+  onNextSong?: () => void;
+  onPreviousSong?: () => void;
+  onVolumeChange?: (vol: number) => void;
+  onOpenVoiceAssistant?: () => void;
+  onExecuteVoiceCommand?: (cmd: string) => void;
+  voiceState?: VoiceAssistantState;
   onDismiss: () => void;
 }
 
@@ -66,8 +82,18 @@ const LANGUAGE_FILTERS = [
 ];
 
 export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
+  currentSong,
   currentSongId,
+  isPlaying = false,
+  volume = 80,
   onSelectSong,
+  onTogglePlayPause,
+  onNextSong,
+  onPreviousSong,
+  onVolumeChange,
+  onOpenVoiceAssistant,
+  onExecuteVoiceCommand,
+  voiceState,
   onDismiss
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trending_playlists');
@@ -77,6 +103,7 @@ export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [activeQueryTag, setActiveQueryTag] = useState('Pushpa 2');
+  const [isVoiceSearching, setIsVoiceSearching] = useState(false);
 
   // Trending Playlists state
   const [playlists, setPlaylists] = useState<JioSaavnPlaylistMeta[]>([]);
@@ -92,6 +119,43 @@ export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
 
   // Download feedback
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+
+  // Voice Search within Muse Stream
+  const handleVoiceSearch = () => {
+    const win = typeof window !== 'undefined' ? (window as any) : null;
+    const SpeechRecognitionClass = win?.SpeechRecognition || win?.webkitSpeechRecognition;
+
+    if (SpeechRecognitionClass) {
+      try {
+        const rec = new SpeechRecognitionClass();
+        rec.lang = 'en-US';
+        rec.interimResults = false;
+        rec.onstart = () => setIsVoiceSearching(true);
+        rec.onresult = (event: any) => {
+          const transcript = event.results?.[0]?.[0]?.transcript;
+          if (transcript) {
+            setSearchQuery(transcript);
+            setActiveTab('search');
+            setIsSearching(true);
+            searchJioSaavn(transcript, true)
+              .then((results) => {
+                setSearchResults(results);
+                setIsSearching(false);
+              })
+              .catch(() => setIsSearching(false));
+          }
+        };
+        rec.onerror = () => setIsVoiceSearching(false);
+        rec.onend = () => setIsVoiceSearching(false);
+        rec.start();
+      } catch (err) {
+        setIsVoiceSearching(false);
+        if (onOpenVoiceAssistant) onOpenVoiceAssistant();
+      }
+    } else if (onOpenVoiceAssistant) {
+      onOpenVoiceAssistant();
+    }
+  };
 
   // 1. Initial Load of Trending Playlists
   useEffect(() => {
@@ -208,13 +272,21 @@ export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
   };
 
   const handlePlaySong = (song: Song) => {
-    onSelectSong(song);
+    let queue: Song[] | undefined = undefined;
+    if (selectedPlaylist && selectedPlaylist.songs.length > 0) {
+      queue = selectedPlaylist.songs;
+    } else if (searchResults.length > 0) {
+      queue = searchResults;
+    } else if (latestSongs.length > 0) {
+      queue = latestSongs;
+    }
+    onSelectSong(song, queue);
     onDismiss();
   };
 
   const handlePlayAllFromPlaylist = () => {
     if (selectedPlaylist && selectedPlaylist.songs.length > 0) {
-      onSelectSong(selectedPlaylist.songs[0]);
+      onSelectSong(selectedPlaylist.songs[0], selectedPlaylist.songs);
       onDismiss();
     }
   };
@@ -281,12 +353,25 @@ export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onDismiss}
-            className="p-1.5 rounded-full bg-[#131C2E] text-[#94A3B8] hover:text-white border border-[#1E293B] transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenVoiceAssistant && (
+              <button
+                onClick={onOpenVoiceAssistant}
+                title="Hey Muse Voice Assistant - Speak to control player and search songs"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FF5014]/20 to-[#FF7A45]/15 hover:from-[#FF5014]/30 hover:to-[#FF7A45]/25 text-[#FF7A45] border border-[#FF5014]/40 text-xs font-bold transition-all shadow-sm group"
+              >
+                <Mic className="w-3.5 h-3.5 text-[#FF5014] group-hover:scale-110 transition-transform animate-pulse" />
+                <span className="hidden sm:inline">Hey Muse AI</span>
+              </button>
+            )}
+
+            <button
+              onClick={onDismiss}
+              className="p-1.5 rounded-full bg-[#131C2E] text-[#94A3B8] hover:text-white border border-[#1E293B] transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Primary Navigation Tabs */}
@@ -728,11 +813,26 @@ export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search any song, movie, album, or singer (e.g. Pushpa, Devara, RRR, Animal, Anirudh, Sid Sriram)..."
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#131C2E] border border-[#1E293B] text-xs text-white placeholder-[#94A3B8] focus:outline-none focus:border-cyan-500 transition-colors"
+                  className="w-full pl-9 pr-11 py-2.5 rounded-xl bg-[#131C2E] border border-[#1E293B] text-xs text-white placeholder-[#94A3B8] focus:outline-none focus:border-cyan-500 transition-colors"
                 />
-                {isSearching && (
-                  <Loader2 className="w-4 h-4 text-cyan-400 absolute right-3 top-1/2 -translate-y-1/2 animate-spin" />
-                )}
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {isSearching ? (
+                    <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleVoiceSearch}
+                      title="Speak to Search (Voice Recognition)"
+                      className={`p-1 rounded-lg transition-colors ${
+                        isVoiceSearching
+                          ? 'bg-rose-500/30 text-rose-400 animate-pulse'
+                          : 'text-[#94A3B8] hover:text-cyan-400 hover:bg-cyan-500/20'
+                      }`}
+                    >
+                      <Mic className={`w-4 h-4 ${isVoiceSearching ? 'animate-bounce' : ''}`} />
+                    </button>
+                  )}
+                </div>
               </div>
               <button
                 type="submit"
@@ -872,6 +972,155 @@ export const JioSaavnHubModal: React.FC<JioSaavnHubModalProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MUSE STREAM LINKED PLAYER DOCK */}
+        {currentSong && (
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-[#10192A] via-[#0E1524] to-[#0A0F1B] border border-cyan-500/35 shadow-lg space-y-2 shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              {/* Song Info & Movie Poster */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-black/50 border border-cyan-500/40 shrink-0 shadow-md">
+                  <img
+                    src={currentSong.coverImage || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&q=80'}
+                    alt={currentSong.movieName || currentSong.title}
+                    className={`w-full h-full object-cover ${isPlaying ? 'scale-105' : 'scale-100'} transition-transform`}
+                  />
+                  {isPlaying && (
+                    <div className="absolute inset-0 bg-cyan-500/20 flex items-center justify-center">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-cyan-400 uppercase truncate">
+                      🎬 {currentSong.movieName || currentSong.album}
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-bold">
+                      STREAMING
+                    </span>
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                    {currentSong.title}
+                  </h4>
+                  <p className="text-[11px] text-[#94A3B8] truncate">
+                    {currentSong.artist}
+                  </p>
+                </div>
+              </div>
+
+              {/* Transport buttons: Previous, Play/Pause, Next */}
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {onPreviousSong && (
+                  <button
+                    onClick={onPreviousSong}
+                    className="p-2 rounded-lg bg-[#142036] hover:bg-cyan-500/20 text-[#94A3B8] hover:text-cyan-300 border border-[#1E293B] transition-colors"
+                    title="Previous Song (Voice: 'previous song')"
+                  >
+                    <SkipBack className="w-4 h-4" />
+                  </button>
+                )}
+
+                {onTogglePlayPause && (
+                  <button
+                    onClick={onTogglePlayPause}
+                    className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all"
+                    title={isPlaying ? 'Pause (Voice: \'pause\')' : 'Play (Voice: \'play\')'}
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-4 h-4 fill-current" />
+                    ) : (
+                      <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                    )}
+                  </button>
+                )}
+
+                {onNextSong && (
+                  <button
+                    onClick={onNextSong}
+                    className="p-2 rounded-lg bg-[#142036] hover:bg-cyan-500/20 text-[#94A3B8] hover:text-cyan-300 border border-[#1E293B] transition-colors"
+                    title="Next Song (Voice: 'next song')"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Volume slider */}
+                {onVolumeChange && (
+                  <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-[#1E293B]">
+                    <Volume2 className="w-3.5 h-3.5 text-[#94A3B8]" />
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={volume}
+                      onChange={(e) => onVolumeChange(Number(e.target.value))}
+                      className="w-16 md:w-20 h-1 bg-[#1A253D] rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                    <span className="text-[10px] font-mono text-[#94A3B8] w-7">{volume}%</span>
+                  </div>
+                )}
+
+                {/* Hey Muse AI voice button */}
+                {onOpenVoiceAssistant && (
+                  <button
+                    onClick={onOpenVoiceAssistant}
+                    title="Hey Muse Voice Assistant"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-[#FF5014]/20 to-[#FF7A45]/20 hover:from-[#FF5014]/30 hover:to-[#FF7A45]/30 text-[#FF7A45] border border-[#FF5014]/40 text-xs font-bold transition-all shadow-sm"
+                  >
+                    <Mic className="w-3.5 h-3.5 text-[#FF5014] animate-pulse" />
+                    <span className="hidden md:inline">Hey Muse</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Voice Command Chips */}
+            {onExecuteVoiceCommand && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pt-1 no-scrollbar text-[10px]">
+                <span className="text-[#64748B] font-bold uppercase shrink-0 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-[#FF5014]" /> Hey Muse AI:
+                </span>
+                <button
+                  onClick={() => onExecuteVoiceCommand('next song')}
+                  className="px-2 py-0.5 rounded-lg bg-[#142036] hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 shrink-0 transition-colors"
+                >
+                  ⏭ Next Song
+                </button>
+                <button
+                  onClick={() => onExecuteVoiceCommand(isPlaying ? 'pause' : 'play')}
+                  className="px-2 py-0.5 rounded-lg bg-[#142036] hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 shrink-0 transition-colors"
+                >
+                  {isPlaying ? '⏸ Pause' : '▶ Play'}
+                </button>
+                <button
+                  onClick={() => onExecuteVoiceCommand('increase volume')}
+                  className="px-2 py-0.5 rounded-lg bg-[#142036] hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 shrink-0 transition-colors"
+                >
+                  🔊 Volume Up
+                </button>
+                <button
+                  onClick={() => onExecuteVoiceCommand('decrease volume')}
+                  className="px-2 py-0.5 rounded-lg bg-[#142036] hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 shrink-0 transition-colors"
+                >
+                  🔉 Volume Down
+                </button>
+                <button
+                  onClick={() => onExecuteVoiceCommand('play Devara')}
+                  className="px-2 py-0.5 rounded-lg bg-[#142036] hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 shrink-0 transition-colors"
+                >
+                  🎬 Play Devara
+                </button>
+                <button
+                  onClick={() => onExecuteVoiceCommand('play Pushpa 2')}
+                  className="px-2 py-0.5 rounded-lg bg-[#142036] hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 shrink-0 transition-colors"
+                >
+                  🎬 Play Pushpa 2
+                </button>
               </div>
             )}
           </div>

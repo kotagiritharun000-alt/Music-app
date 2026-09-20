@@ -17,6 +17,20 @@ export interface BgmStem {
   description: string;
 }
 
+export interface GeneratedBgmItem {
+  id: string;
+  title: string;
+  styleKey: 'mass_action' | 'emotional_melody' | 'karaoke' | 'trap_bass' | 'lofi_chill' | 'teaser_climax';
+  tag: string;
+  description: string;
+  blob: Blob;
+  url: string;
+  durationSec: number;
+  bpm: number;
+  themeColor: string;
+  badge: string;
+}
+
 export interface LyricLine {
   timestampMs: number;
   text: string;
@@ -48,6 +62,8 @@ export interface Song {
   hasBgmReady?: boolean;
   fullLyricsText?: string;
   teluguLyrics?: string;
+  lyricsSource?: string;
+  isLyricsSynced?: boolean;
   sourcePortal?: 'NaaSongs' | 'SenSongs' | 'LocalFile' | 'MuseOriginal' | 'JioSaavn';
   coverImage?: string;
   year?: string;
@@ -99,6 +115,7 @@ export interface AudioSpatialConfig {
 export interface VoiceAssistantState {
   isListening: boolean;
   isAlwaysListeningEnabled: boolean;
+  isSpeaking?: boolean;
   recognizedText: string;
   assistantFeedback: string;
   lastAction?: string | null;
@@ -212,4 +229,5 @@ export type VoiceAction =
   | { type: 'OPEN_STEM_EXTRACTOR' }
   | { type: 'OPEN_AUDIO_TRIMMER' }
   | { type: 'OPEN_LYRICS_CHAT' }
+  | { type: 'OPEN_MUSE_STREAM' }
   | { type: 'GENERAL_INFO'; response: string };

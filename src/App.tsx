@@ -29,6 +29,8 @@ import {
   clearAllDeviceTracks
 } from './services/deviceMusicStorage';
 import { convertDeviceTrackToSong } from './services/deviceMusicService';
+import { searchJioSaavn, fetchJioSaavnLyrics, fetchLatestReleases } from './services/jioSaavnService';
+import { fetchAccurateLyrics } from './services/lyricsService';
 import {
   AudioSpatialConfig,
   BgmStem,
@@ -51,6 +53,10 @@ export const App: React.FC = () => {
   const [songs, setSongs] = useState<Song[]>(ALL_INITIAL_SONGS);
   const [currentSongIndex, setCurrentSongIndex] = useState<number>(0);
   const currentSong = songs[currentSongIndex] || ALL_INITIAL_SONGS[0];
+
+  // Muse Stream Queue & Navigation State
+  const [museStreamQueue, setMuseStreamQueue] = useState<Song[]>([]);
+  const [isMuseStreamMode, setIsMuseStreamMode] = useState<boolean>(false);
 
   // Engine & Helper Instances
   const audioEngineRef = useRef<ProceduralAudioEngine | null>(null);
@@ -139,6 +145,42 @@ export const App: React.FC = () => {
   const [isBrandLogoOpen, setIsBrandLogoOpen] = useState<boolean>(false);
   const [isBgmModeActive, setIsBgmModeActive] = useState<boolean>(false);
   const [isWindowDragActive, setIsWindowDragActive] = useState<boolean>(false);
+  const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
+
+  // High-precision lyrics synchronizer across verified catalog, LRCLIB and AI models
+  const ensureSongLyrics = async (targetSong: Song, customQuery?: string) => {
+    if (!targetSong) return;
+    setIsLoadingLyrics(true);
+    try {
+      const result = await fetchAccurateLyrics(targetSong, customQuery);
+      if (result && result.lyrics && result.lyrics.length > 0) {
+        setSongs(prevSongs => prevSongs.map(s => {
+          if (s.id === targetSong.id) {
+            return {
+              ...s,
+              lyrics: result.lyrics,
+              lyricsSource: result.source,
+              isLyricsSynced: result.isSynced,
+              fullLyricsText: result.fullLyricsText
+            };
+          }
+          return s;
+        }));
+
+        if (lyricsChatbotRef.current) {
+          lyricsChatbotRef.current.initializeForSong({
+            ...targetSong,
+            lyrics: result.lyrics,
+            fullLyricsText: result.fullLyricsText
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('ensureSongLyrics failed:', err);
+    } finally {
+      setIsLoadingLyrics(false);
+    }
+  };
 
   // Load stored device tracks on startup from IndexedDB
   useEffect(() => {
@@ -151,6 +193,13 @@ export const App: React.FC = () => {
       }
     };
     loadStoredTracks();
+
+    // Preload Muse Stream trending releases for instant Next/Previous queue navigation
+    fetchLatestReleases().then((releases) => {
+      if (releases && releases.length > 0) {
+        setMuseStreamQueue(releases);
+      }
+    }).catch((err) => console.warn('Muse Stream queue prefetch:', err));
   }, []);
 
   const handleAddDeviceTracks = async (newTracks: DeviceTrackRecord[]) => {
@@ -242,8 +291,22 @@ export const App: React.FC = () => {
     showToast('Lyrics Updated', 'New synchronized lyrics applied to track');
   };
 
-  // Play a song from NaaSongs, SenSongs, or Local file
-  const handleLoadCustomSong = (newSong: Song) => {
+  // Play a song from JioSaavn Muse Stream, NaaSongs, SenSongs, or Local file
+  const handleLoadCustomSong = (newSong: Song, streamQueueContext?: Song[]) => {
+    // If a stream queue context is provided (from playlist, search results, or trending)
+    if (streamQueueContext && streamQueueContext.length > 0) {
+      setMuseStreamQueue(streamQueueContext);
+      setIsMuseStreamMode(true);
+    } else if (newSong.sourcePortal === 'JioSaavn') {
+      setIsMuseStreamMode(true);
+      setMuseStreamQueue(prev => {
+        if (!prev.some(s => s.id === newSong.id)) {
+          return [newSong, ...prev];
+        }
+        return prev;
+      });
+    }
+
     // Position newSong at front and ensure it is selected at index 0
     setSongs(prev => {
       const filtered = prev.filter(s => s.id !== newSong.id);
@@ -264,6 +327,9 @@ export const App: React.FC = () => {
 
     setIsPlaying(true);
     setActiveView('player');
+
+    // Asynchronously fetch live, millisecond-synchronized verified lyrics
+    ensureSongLyrics(newSong);
 
     showToast(
       `Now Playing: ${newSong.title}`,
@@ -459,6 +525,18 @@ export const App: React.FC = () => {
     }
   };
 
+  // Automatically ensure verified, synchronized lyrics whenever the active song changes
+  useEffect(() => {
+    if (currentSong) {
+      const isPlaceholder = currentSong.lyrics?.some(l =>
+        l.text.includes('[Audio Stream]') || l.text.includes('[Pallavi / Verse 1] Swaraala dhaarallo')
+      );
+      if (!currentSong.lyricsSource || isPlaceholder || currentSong.lyrics.length <= 5) {
+        ensureSongLyrics(currentSong);
+      }
+    }
+  }, [currentSong?.id]);
+
   // Playback Control Handlers
   const handleTogglePlayPause = () => {
     if (!audioEngineRef.current) return;
@@ -469,8 +547,62 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleNextSong = () => switchSong(currentSongIndex + 1);
-  const handlePreviousSong = () => switchSong(currentSongIndex - 1);
+  const handleNextSong = async () => {
+    // If playing from Muse Stream or stream queue exists
+    if (isMuseStreamMode || currentSong.sourcePortal === 'JioSaavn' || museStreamQueue.length > 0) {
+      let queue = museStreamQueue;
+      if (queue.length === 0) {
+        try {
+          queue = await fetchLatestReleases();
+          setMuseStreamQueue(queue);
+        } catch (err) {
+          console.warn('Failed to load Muse Stream queue:', err);
+        }
+      }
+
+      if (queue.length > 0) {
+        const currentIdx = queue.findIndex(
+          s => s.id === currentSong.id || s.title.toLowerCase() === currentSong.title.toLowerCase()
+        );
+        const nextIdx = currentIdx !== -1 ? (currentIdx + 1) % queue.length : 0;
+        const nextTrack = queue[nextIdx];
+        handleLoadCustomSong(nextTrack, queue);
+        showToast('Muse Stream • Next Song', `${nextTrack.title} • ${nextTrack.artist}`);
+        voiceAssistantRef.current?.speak(`Playing next in Muse Stream: ${nextTrack.title}`);
+        return;
+      }
+    }
+
+    switchSong(currentSongIndex + 1);
+  };
+
+  const handlePreviousSong = async () => {
+    if (isMuseStreamMode || currentSong.sourcePortal === 'JioSaavn' || museStreamQueue.length > 0) {
+      let queue = museStreamQueue;
+      if (queue.length === 0) {
+        try {
+          queue = await fetchLatestReleases();
+          setMuseStreamQueue(queue);
+        } catch (err) {
+          console.warn('Failed to load Muse Stream queue:', err);
+        }
+      }
+
+      if (queue.length > 0) {
+        const currentIdx = queue.findIndex(
+          s => s.id === currentSong.id || s.title.toLowerCase() === currentSong.title.toLowerCase()
+        );
+        const prevIdx = currentIdx !== -1 ? (currentIdx - 1 + queue.length) % queue.length : queue.length - 1;
+        const prevTrack = queue[prevIdx];
+        handleLoadCustomSong(prevTrack, queue);
+        showToast('Muse Stream • Previous Song', `${prevTrack.title} • ${prevTrack.artist}`);
+        voiceAssistantRef.current?.speak(`Playing previous in Muse Stream: ${prevTrack.title}`);
+        return;
+      }
+    }
+
+    switchSong(currentSongIndex - 1);
+  };
   const handleRestartSong = () => {
     if (audioEngineRef.current) {
       audioEngineRef.current.seekTo(0);
@@ -594,7 +726,11 @@ export const App: React.FC = () => {
       case 'SET_DOLBY_ATMOS':
         handleSpatialConfigChange({ ...spatialConfig, isDolbyAtmosEnabled: action.enabled });
         break;
+      case 'OPEN_MUSE_STREAM':
+        setIsJioSaavnOpen(true);
+        break;
       case 'OPEN_STEM_EXTRACTOR':
+        setIsBgmGeneratorOpen(true);
         break;
       case 'OPEN_AUDIO_TRIMMER':
         setIsTrimmerOpen(true);
@@ -603,12 +739,37 @@ export const App: React.FC = () => {
         setIsLyricsChatOpen(true);
         break;
       case 'SEARCH_AND_PLAY': {
-        const query = action.query.toLowerCase();
+        const query = action.query.toLowerCase().trim();
         const match = songs.find(
-          s => s.title.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query)
+          s =>
+            s.title.toLowerCase().includes(query) ||
+            s.artist.toLowerCase().includes(query) ||
+            (s.movieName && s.movieName.toLowerCase().includes(query))
         );
         if (match) {
           handleLoadCustomSong(match);
+          voiceAssistantRef.current?.speak(`Now playing ${match.title}`);
+        } else {
+          // Query Muse Stream Engine for live track
+          searchJioSaavn(action.query, true)
+            .then((results) => {
+              if (results && results.length > 0) {
+                const topResult = results[0];
+                handleLoadCustomSong(topResult, results);
+                voiceAssistantRef.current?.speak(
+                  `Playing ${topResult.title} from ${topResult.movieName || 'Muse Stream'}`
+                );
+                setVoiceState((prev) => ({
+                  ...prev,
+                  assistantFeedback: `Now streaming "${topResult.title}" • ${topResult.movieName || 'Muse Stream'}`
+                }));
+              } else {
+                voiceAssistantRef.current?.speak(`Could not find "${action.query}" on Muse Stream.`);
+              }
+            })
+            .catch((err) => {
+              console.warn('Voice live search error:', err);
+            });
         }
         break;
       }
@@ -768,6 +929,8 @@ export const App: React.FC = () => {
                 volume={volume}
                 isMuted={isMuted}
                 isFavorite={favoriteSongIds.has(currentSong.id)}
+                voiceFeedback={voiceState.lastAction ? voiceState.assistantFeedback : undefined}
+                isVoiceListening={voiceState.isListening}
                 onTogglePlayPause={handleTogglePlayPause}
                 onNextSong={handleNextSong}
                 onPreviousSong={handlePreviousSong}
@@ -791,6 +954,8 @@ export const App: React.FC = () => {
                 onOpenLyricsChat={() => setIsLyricsChatOpen(true)}
                 onOpenFullLyrics={() => setIsFullLyricsOpen(true)}
                 onSeekTo={handleSeekTo}
+                onRefreshLyrics={() => ensureSongLyrics(currentSong)}
+                isLoadingLyrics={isLoadingLyrics}
               />
 
               {/* Multi-Stem Segment Isolation Carousel & Mixer */}
@@ -886,9 +1051,19 @@ export const App: React.FC = () => {
       {isVoiceOpen && (
         <VoiceAssistantModal
           state={voiceState}
+          currentSong={currentSong}
+          isPlaying={isPlaying}
+          volume={volume}
           onStartListening={() => voiceAssistantRef.current?.startListening()}
           onStopListening={() => voiceAssistantRef.current?.stopListening()}
           onExecuteCommand={(cmd) => voiceAssistantRef.current?.parseAndExecute(cmd)}
+          onTogglePlayPause={handleTogglePlayPause}
+          onNextSong={handleNextSong}
+          onPreviousSong={handlePreviousSong}
+          onVolumeChange={handleVolumeChange}
+          onToggleAlwaysListening={(enabled) => voiceAssistantRef.current?.toggleAlwaysListening(enabled)}
+          isSpeechOutputEnabled={voiceAssistantRef.current?.getSpeechOutput() ?? true}
+          onToggleSpeechOutput={(enabled) => voiceAssistantRef.current?.setSpeechOutput(enabled)}
           onDismiss={() => setIsVoiceOpen(false)}
         />
       )}
@@ -912,8 +1087,18 @@ export const App: React.FC = () => {
 
       {isJioSaavnOpen && (
         <JioSaavnHubModal
+          currentSong={currentSong}
           currentSongId={currentSong.id}
+          isPlaying={isPlaying}
+          volume={volume}
           onSelectSong={handleLoadCustomSong}
+          onTogglePlayPause={handleTogglePlayPause}
+          onNextSong={handleNextSong}
+          onPreviousSong={handlePreviousSong}
+          onVolumeChange={handleVolumeChange}
+          onOpenVoiceAssistant={() => setIsVoiceOpen(true)}
+          onExecuteVoiceCommand={(cmd) => voiceAssistantRef.current?.parseAndExecute(cmd)}
+          voiceState={voiceState}
           onDismiss={() => setIsJioSaavnOpen(false)}
         />
       )}
@@ -948,6 +1133,7 @@ export const App: React.FC = () => {
           currentPositionMs={currentPositionMs}
           onSeekTo={handleSeekTo}
           onUpdateLyrics={handleUpdateLyrics}
+          onSearchLyrics={(query) => ensureSongLyrics(currentSong, query)}
           onDismiss={() => setIsFullLyricsOpen(false)}
         />
       )}
