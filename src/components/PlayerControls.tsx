@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Heart,
   Mic,
+  Moon,
   Pause,
   Play,
   Repeat,
@@ -25,6 +26,7 @@ interface PlayerControlsProps {
   isFavorite: boolean;
   voiceFeedback?: string;
   isVoiceListening?: boolean;
+  sleepTimerRemainingSec?: number | null;
   onTogglePlayPause: () => void;
   onNextSong: () => void;
   onPreviousSong: () => void;
@@ -36,6 +38,7 @@ interface PlayerControlsProps {
   onOpenSpatial: () => void;
   onOpenTrimmer: () => void;
   onOpenVoiceAssistant: () => void;
+  onOpenSleepTimer?: () => void;
 }
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({
@@ -47,6 +50,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   isFavorite,
   voiceFeedback,
   isVoiceListening = false,
+  sleepTimerRemainingSec = null,
   onTogglePlayPause,
   onNextSong,
   onPreviousSong,
@@ -57,7 +61,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onToggleFavorite,
   onOpenSpatial,
   onOpenTrimmer,
-  onOpenVoiceAssistant
+  onOpenVoiceAssistant,
+  onOpenSleepTimer
 }) => {
   const formatTime = (ms: number) => {
     const totalSec = Math.floor(ms / 1000);
@@ -108,6 +113,27 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Sleep Timer Indicator / Trigger Button */}
+          {sleepTimerRemainingSec !== null && sleepTimerRemainingSec > 0 ? (
+            <button
+              onClick={onOpenSleepTimer}
+              title={`Sleep Timer Active: ${formatTime(sleepTimerRemainingSec * 1000)} remaining. Click to adjust or cancel.`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm bg-indigo-950/50 hover:bg-indigo-900/60 text-indigo-300 border-indigo-500/40 hover:border-indigo-400 animate-pulse"
+            >
+              <Moon className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400/30" />
+              <span className="font-mono">{formatTime(sleepTimerRemainingSec * 1000)}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+            </button>
+          ) : (
+            <button
+              onClick={onOpenSleepTimer}
+              className="p-2.5 rounded-full border bg-[#1A100B] text-[#8E9299] hover:text-indigo-300 hover:border-indigo-500/40 border-[#2C1910] transition-colors"
+              title="Set Sleep Timer - Auto-pause audio & enter Sleep Mode"
+            >
+              <Moon className="w-5 h-5" />
+            </button>
+          )}
+
           {/* Hey Muse Voice Trigger */}
           <button
             onClick={onOpenVoiceAssistant}
@@ -271,6 +297,27 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           >
             <Scissors className="w-3 h-3" />
             <span>Trim</span>
+          </button>
+
+          <button
+            onClick={onOpenSleepTimer}
+            title={
+              sleepTimerRemainingSec !== null && sleepTimerRemainingSec > 0
+                ? `Sleep Timer active: ${formatTime(sleepTimerRemainingSec * 1000)} remaining`
+                : 'Set Sleep Timer'
+            }
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold border transition-colors ${
+              sleepTimerRemainingSec !== null && sleepTimerRemainingSec > 0
+                ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/50'
+                : 'bg-[#1A100B] hover:bg-[#24150D] text-[#8E9299] hover:text-indigo-300 border-[#2C1910]'
+            }`}
+          >
+            <Moon className="w-3 h-3 text-indigo-400" />
+            <span>
+              {sleepTimerRemainingSec !== null && sleepTimerRemainingSec > 0
+                ? formatTime(sleepTimerRemainingSec * 1000)
+                : 'Sleep'}
+            </span>
           </button>
         </div>
       </div>

@@ -20,6 +20,8 @@ import { MobileApkModal } from './components/MobileApkModal';
 import { BgmGeneratorModal } from './components/BgmGeneratorModal';
 import { FullLyricsModal } from './components/FullLyricsModal';
 import { BrandLogoModal } from './components/BrandLogoModal';
+import { SleepTimerModal } from './components/SleepTimerModal';
+import { SleepModeOverlay } from './components/SleepModeOverlay';
 import { LibraryView } from './components/LibraryView';
 import {
   DeviceTrackRecord,
@@ -147,6 +149,15 @@ export const App: React.FC = () => {
   const [isWindowDragActive, setIsWindowDragActive] = useState<boolean>(false);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
 
+  // Sleep Timer & Sleep Mode State
+  const [isSleepTimerOpen, setIsSleepTimerOpen] = useState<boolean>(false);
+  const [sleepTimerRemainingSec, setSleepTimerRemainingSec] = useState<number | null>(null);
+  const [sleepTimerTotalSec, setSleepTimerTotalSec] = useState<number | null>(null);
+  const [isSleepModeActive, setIsSleepModeActive] = useState<boolean>(false);
+  const [sleepModeTriggeredAt, setSleepModeTriggeredAt] = useState<Date | null>(null);
+  const [fadeAudioOnSleep, setFadeAudioOnSleep] = useState<boolean>(true);
+  const originalVolumeRef = useRef<number>(85);
+
   // High-precision lyrics synchronizer across verified catalog, LRCLIB and AI models
   const ensureSongLyrics = async (targetSong: Song, customQuery?: string) => {
     if (!targetSong) return;
@@ -246,6 +257,112 @@ export const App: React.FC = () => {
     setTimeout(() => {
       setToastMessage(null);
     }, 4000);
+  };
+
+  // Sleep Timer Countdown Processor
+  useEffect(() => {
+    if (sleepTimerRemainingSec === null) return;
+
+    if (sleepTimerRemainingSec <= 0) {
+      if (audioEngineRef.current) {
+        audioEngineRef.current.pause();
+      }
+      setIsPlaying(false);
+      setIsSleepModeActive(true);
+      setSleepModeTriggeredAt(new Date());
+      setSleepTimerRemainingSec(null);
+      setSleepTimerTotalSec(null);
+
+      // Restore original volume if faded
+      if (originalVolumeRef.current !== undefined) {
+        setVolume(originalVolumeRef.current);
+        if (audioEngineRef.current) {
+          audioEngineRef.current.setVolume(originalVolumeRef.current);
+        }
+      }
+
+      showToast('Sleep Mode Active', 'Sleep timer elapsed. Audio playback paused safely.');
+      return;
+    }
+
+    // Optional gentle volume fade out in last 30 seconds
+    if (fadeAudioOnSleep && sleepTimerRemainingSec <= 30 && sleepTimerRemainingSec > 0) {
+      const fadeRatio = sleepTimerRemainingSec / 30;
+      const baseVol = originalVolumeRef.current || 85;
+      const fadedVol = Math.max(0, Math.round(baseVol * fadeRatio));
+      if (audioEngineRef.current) {
+        audioEngineRef.current.setVolume(fadedVol);
+      }
+    }
+
+    const timerId = setInterval(() => {
+      setSleepTimerRemainingSec((prev) => {
+        if (prev === null || prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, [sleepTimerRemainingSec, fadeAudioOnSleep]);
+
+  const handleSetSleepTimer = (seconds: number, fadeAudio: boolean) => {
+    originalVolumeRef.current = volume;
+    setSleepTimerTotalSec(seconds);
+    setSleepTimerRemainingSec(seconds);
+    setFadeAudioOnSleep(fadeAudio);
+    setIsSleepTimerOpen(false);
+
+    const mins = Math.round(seconds / 60);
+    showToast(
+      'Sleep Timer Set',
+      seconds < 60
+        ? `Audio will pause in ${seconds} seconds.`
+        : `Audio will pause & enter Sleep Mode in ${mins} minute${mins > 1 ? 's' : ''}.`
+    );
+  };
+
+  const handleCancelSleepTimer = () => {
+    setSleepTimerRemainingSec(null);
+    setSleepTimerTotalSec(null);
+    if (audioEngineRef.current) {
+      audioEngineRef.current.setVolume(volume);
+    }
+    showToast('Sleep Timer Cancelled', 'Audio playback will continue uninterrupted.');
+  };
+
+  const handleAddSleepTimerMinutes = (minutes: number) => {
+    setSleepTimerRemainingSec((prev) => (prev !== null ? prev + minutes * 60 : minutes * 60));
+    setSleepTimerTotalSec((prev) => (prev !== null ? prev + minutes * 60 : minutes * 60));
+    showToast('Timer Extended', `Added ${minutes} minutes to sleep countdown.`);
+  };
+
+  const handleTriggerSleepNow = () => {
+    setIsSleepTimerOpen(false);
+    setSleepTimerRemainingSec(null);
+    setSleepTimerTotalSec(null);
+    if (audioEngineRef.current) {
+      audioEngineRef.current.pause();
+    }
+    setIsPlaying(false);
+    setIsSleepModeActive(true);
+    setSleepModeTriggeredAt(new Date());
+    showToast('Entering Sleep Mode', 'Audio paused safely.');
+  };
+
+  const handleWakeUp = (resumePlayback: boolean) => {
+    setIsSleepModeActive(false);
+    if (audioEngineRef.current) {
+      audioEngineRef.current.setVolume(volume);
+    }
+    if (resumePlayback) {
+      if (audioEngineRef.current) {
+        audioEngineRef.current.play();
+      }
+      setIsPlaying(true);
+      showToast('Welcome Back', `Resumed playing ${currentSong.title}.`);
+    } else {
+      showToast('Awake', 'Muse is awake. Audio playback remains paused.');
+    }
   };
 
   const handleToggleBgmMode = () => {
@@ -619,6 +736,7 @@ export const App: React.FC = () => {
 
   const handleVolumeChange = (newVol: number) => {
     setVolume(newVol);
+    originalVolumeRef.current = newVol;
     if (isMuted && newVol > 0) setIsMuted(false);
     if (audioEngineRef.current) {
       audioEngineRef.current.setVolume(newVol);
@@ -931,6 +1049,7 @@ export const App: React.FC = () => {
                 isFavorite={favoriteSongIds.has(currentSong.id)}
                 voiceFeedback={voiceState.lastAction ? voiceState.assistantFeedback : undefined}
                 isVoiceListening={voiceState.isListening}
+                sleepTimerRemainingSec={sleepTimerRemainingSec}
                 onTogglePlayPause={handleTogglePlayPause}
                 onNextSong={handleNextSong}
                 onPreviousSong={handlePreviousSong}
@@ -942,6 +1061,7 @@ export const App: React.FC = () => {
                 onOpenSpatial={() => setIsSpatialOpen(true)}
                 onOpenTrimmer={() => setIsTrimmerOpen(true)}
                 onOpenVoiceAssistant={() => setIsVoiceOpen(true)}
+                onOpenSleepTimer={() => setIsSleepTimerOpen(true)}
               />
             </div>
 
@@ -1142,6 +1262,30 @@ export const App: React.FC = () => {
         <BrandLogoModal
           isPlaying={isPlaying}
           onDismiss={() => setIsBrandLogoOpen(false)}
+        />
+      )}
+
+      {isSleepTimerOpen && (
+        <SleepTimerModal
+          remainingSeconds={sleepTimerRemainingSec}
+          totalSeconds={sleepTimerTotalSec}
+          currentSong={currentSong}
+          currentPositionMs={currentPositionMs}
+          fadeAudio={fadeAudioOnSleep}
+          onSetTimer={handleSetSleepTimer}
+          onCancelTimer={handleCancelSleepTimer}
+          onAddMinutes={handleAddSleepTimerMinutes}
+          onToggleFadeAudio={setFadeAudioOnSleep}
+          onTriggerSleepNow={handleTriggerSleepNow}
+          onDismiss={() => setIsSleepTimerOpen(false)}
+        />
+      )}
+
+      {isSleepModeActive && (
+        <SleepModeOverlay
+          lastPlayedSong={currentSong}
+          triggeredAt={sleepModeTriggeredAt}
+          onWakeUp={handleWakeUp}
         />
       )}
     </div>
