@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Library, Music, Sparkles, HardDrive, Disc } from 'lucide-react';
+import { Layers, Library, Music, Sparkles, HardDrive, Disc, Flame } from 'lucide-react';
 import { Song } from '../types';
 import { ModernMusicLogo } from './ModernMusicLogo';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   onOpenJioSaavn: () => void;
   onOpenDeviceMusic: () => void;
   onOpenMobileApk: () => void;
+  onOpenBrandLogo?: () => void;
   deviceTrackCount?: number;
 }
 
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenJioSaavn,
   onOpenDeviceMusic,
   onOpenMobileApk,
+  onOpenBrandLogo,
   deviceTrackCount = 0
 }) => {
   return (
@@ -34,8 +36,14 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Latest Type Modern Music Logo & Brand */}
         <div
           className="flex items-center gap-3 cursor-pointer group"
-          onClick={() => activeView !== 'player' && onToggleView()}
-          title="Return to Player"
+          onClick={() => {
+            if (onOpenBrandLogo) {
+              onOpenBrandLogo();
+            } else if (activeView !== 'player') {
+              onToggleView();
+            }
+          }}
+          title="Click to view Muse Brand Logo & Vector Assets"
         >
           <ModernMusicLogo size="md" isPlaying={isPlaying} />
           <div>
@@ -48,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <p className="text-[10px] text-[#8E9299] font-medium tracking-wide">
-              Dolby Atmos 360 • Device Music & JioSaavn
+              Dolby Atmos 360 • Device Music & Muse Stream
             </p>
           </div>
         </div>
@@ -63,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
           {currentSong.sourcePortal && (
             <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1A100B] border border-[#2C1910] text-[11px] font-medium text-[#E0D8D0]">
-              <span className="text-emerald-400 font-bold">{currentSong.sourcePortal === 'LocalFile' ? 'Device Storage' : currentSong.sourcePortal}</span>
+              <span className="text-emerald-400 font-bold">{currentSong.sourcePortal === 'LocalFile' ? 'Device Storage' : currentSong.sourcePortal === 'JioSaavn' ? 'Muse Stream' : currentSong.sourcePortal}</span>
               <span className="text-[#8E9299]">Master</span>
             </div>
           )}
@@ -71,15 +79,19 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          {/* JioSaavn API Stream Button */}
+          {/* Muse Stream Button */}
           <button
             onClick={onOpenJioSaavn}
-            title="Search & Stream from JioSaavn API (Any Song, 320 Kbps HD)"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-600/15 hover:from-cyan-500/30 hover:to-blue-600/25 text-cyan-400 border border-cyan-500/40 text-xs font-bold transition-all shadow-sm"
+            title="Muse Online Streaming - Trending Playlists, Latest Releases & 80M+ Songs (320 Kbps HD)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-600/15 hover:from-cyan-500/30 hover:to-blue-600/25 text-cyan-400 border border-cyan-500/40 text-xs font-bold transition-all shadow-sm group"
           >
-            <Disc className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">JioSaavn</span>
-            <span className="sm:hidden">Saavn</span>
+            <Disc className="w-3.5 h-3.5 text-cyan-400 group-hover:animate-spin" />
+            <span className="hidden sm:inline">Muse Stream</span>
+            <span className="sm:hidden">Muse</span>
+            <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/30 flex items-center gap-0.5">
+              <Flame className="w-2.5 h-2.5 text-amber-400" />
+              <span className="hidden sm:inline">Trending</span>
+            </span>
           </button>
 
           {/* Device Music (Mobile Phone / Laptop) Button */}

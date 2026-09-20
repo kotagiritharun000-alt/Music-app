@@ -257,7 +257,123 @@ app.get('/api/jiosaavn/lyrics', handleLyrics);
 app.get('/result', handleSearch);
 app.get('/result/', handleSearch);
 
-// 7. Audio Proxy for Seamless Streaming
+// 7. Trending Playlists & Charts (/api/jiosaavn/trending-playlists)
+async function handleTrendingPlaylists(req: Request, res: Response) {
+  try {
+    const chartsUrl = `https://www.jiosaavn.com/api.php?__call=content.getCharts&api_version=4&_format=json&_marker=0&ctx=web6dot0`;
+    const response = await fetch(chartsUrl);
+    const data = await response.json();
+
+    const playlists: any[] = [];
+
+    // Add high-priority curated regional Top 50 playlists if not already in charts
+    const priorityPlaylists = [
+      {
+        id: '1134548194',
+        title: 'India Superhits Top 50',
+        subtitle: 'Most Streamed Hits across India',
+        language: 'All Languages',
+        image: 'https://c.saavncdn.com/editorial/IndiaSuperhitsTop50_20260918045504.jpg',
+        songCount: 50
+      },
+      {
+        id: '1134643225',
+        title: 'Telugu: India Superhits Top 50',
+        subtitle: 'Tollywood Top Chartbusters',
+        language: 'Telugu',
+        image: 'https://c.saavncdn.com/editorial/Telugu-IndiaSuperhitsTop50_20260918045504.jpg',
+        songCount: 50
+      },
+      {
+        id: '1266643840',
+        title: 'Trending Telugu Songs',
+        subtitle: 'Viral Tollywood Audio & Reels',
+        language: 'Telugu',
+        image: 'https://c.saavncdn.com/editorial/TrendingTeluguSongs_20260911054516.jpg',
+        songCount: 40
+      },
+      {
+        id: '1134543272',
+        title: 'Hindi: India Superhits Top 50',
+        subtitle: 'Bollywood Top Trending Hits',
+        language: 'Hindi',
+        image: 'https://c.saavncdn.com/editorial/Hindi-IndiaSuperhitsTop50_20260911054516.jpg',
+        songCount: 50
+      },
+      {
+        id: '1134651042',
+        title: 'Tamil: India Superhits Top 50',
+        subtitle: 'Kollywood Top Chartbusters',
+        language: 'Tamil',
+        image: 'https://c.saavncdn.com/editorial/Tamil-IndiaSuperhitsTop50_20260918045504.jpg',
+        songCount: 50
+      },
+      {
+        id: '47599074',
+        title: 'Now Trending - Pan India',
+        subtitle: 'Viral Hits Dominating the Nation',
+        language: 'Pan-India',
+        image: 'https://c.saavncdn.com/editorial/NowTrending_20260423085344_150x150.jpg',
+        songCount: 37
+      }
+    ];
+
+    priorityPlaylists.forEach(p => {
+      playlists.push({
+        ...p,
+        image: p.image.replace('150x150', '500x500')
+      });
+    });
+
+    if (Array.isArray(data)) {
+      data.forEach((chart: any) => {
+        if (!playlists.some(p => p.id === chart.id)) {
+          playlists.push({
+            id: chart.id,
+            title: cleanHtml(chart.title || 'Trending Playlist'),
+            subtitle: cleanHtml(chart.more_info?.firstname || 'JioSaavn Editorial'),
+            language: (chart.title || '').toLowerCase().includes('telugu') ? 'Telugu' : (chart.title || '').toLowerCase().includes('hindi') ? 'Hindi' : (chart.title || '').toLowerCase().includes('tamil') ? 'Tamil' : 'Trending',
+            image: (chart.image || '').replace('150x150', '500x500'),
+            songCount: chart.count || 50
+          });
+        }
+      });
+    }
+
+    return res.json(playlists);
+  } catch (err: any) {
+    console.warn('Error in handleTrendingPlaylists:', err);
+    return res.status(500).json({ status: false, error: err.message });
+  }
+}
+
+app.get('/api/jiosaavn/trending-playlists', handleTrendingPlaylists);
+
+// 8. Latest Released Songs (/api/jiosaavn/latest-releases)
+async function handleLatestReleases(req: Request, res: Response) {
+  const language = (req.query.language as string) || '';
+  try {
+    let queryTerm = 'Latest Songs';
+    if (language && language.toLowerCase() !== 'all') {
+      queryTerm = `Latest ${language} Songs`;
+    }
+
+    const url = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=in&p=1&n=30&q=${encodeURIComponent(queryTerm)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    const rawResults = data.results || [];
+
+    const formatted = rawResults.map((s: any) => formatSongItem(s, false));
+    return res.json(formatted);
+  } catch (err: any) {
+    console.warn('Error in handleLatestReleases:', err);
+    return res.status(500).json({ status: false, error: err.message });
+  }
+}
+
+app.get('/api/jiosaavn/latest-releases', handleLatestReleases);
+
+// 9. Audio Proxy for Seamless Streaming
 app.get('/api/audio-proxy', async (req: Request, res: Response) => {
   const targetUrl = req.query.url as string;
   if (!targetUrl) {

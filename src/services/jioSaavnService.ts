@@ -147,7 +147,7 @@ export function convertJioSaavnToMuseSong(raw: JioSaavnSongRaw): Song {
       lyrics = lines.map((text, idx) => ({
         timestampMs: idx * stepMs,
         text: decodeHtmlEntities(text),
-        translation: idx === 0 ? 'Official JioSaavn Synced Lyrics' : undefined,
+        translation: idx === 0 ? 'Official Muse Synced Lyrics' : undefined,
         aiNote: idx === 1 ? 'Dolby Atmos 360 Vocal Enhancement Active' : undefined
       }));
     } else if (formatted.lyrics_snippet) {
@@ -249,7 +249,7 @@ export function convertJioSaavnToMuseSong(raw: JioSaavnSongRaw): Song {
     bpm: 124,
     key: 'D Major',
     genre: `${formatted.language ? formatted.language.toUpperCase() : 'INDIAN'} Cinema`,
-    description: `Streamed directly via JioSaavn API. Music by ${formatted.music}. Starring ${formatted.starring || 'Cast'}.`,
+    description: `Streamed via Muse Stream Engine. Music by ${formatted.music}. Starring ${formatted.starring || 'Cast'}.`,
     gradientStart,
     gradientEnd,
     isDolbyAtmos: true,
@@ -355,3 +355,190 @@ export async function fetchJioSaavnLyrics(songId: string): Promise<string | null
 
   return null;
 }
+
+export interface JioSaavnPlaylistMeta {
+  id: string;
+  title: string;
+  subtitle?: string;
+  language?: string;
+  image: string;
+  songCount: number;
+}
+
+export interface JioSaavnPlaylistDetails {
+  id: string;
+  title: string;
+  subtitle?: string;
+  image: string;
+  songs: Song[];
+}
+
+/**
+ * Fetches top trending playlists and charts.
+ */
+export async function fetchTrendingPlaylists(): Promise<JioSaavnPlaylistMeta[]> {
+  // 1. Try local server endpoint first
+  try {
+    const res = await fetch('/api/jiosaavn/trending-playlists');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('Server trending playlists fetch failed, attempting fallback:', err);
+  }
+
+  // 2. Direct fallback charts API
+  try {
+    const url = `https://www.jiosaavn.com/api.php?__call=content.getCharts&api_version=4&_format=json&_marker=0&ctx=web6dot0`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const charts = await res.json();
+      if (Array.isArray(charts)) {
+        return charts.map((c: any) => ({
+          id: c.id,
+          title: decodeHtmlEntities(c.title || 'Trending Playlist'),
+          subtitle: decodeHtmlEntities(c.more_info?.firstname || 'JioSaavn Editorial'),
+          language: (c.title || '').toLowerCase().includes('telugu') ? 'Telugu' : (c.title || '').toLowerCase().includes('hindi') ? 'Hindi' : 'Trending',
+          image: (c.image || '').replace('150x150', '500x500'),
+          songCount: c.count || 50
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('Direct charts fallback failed:', err);
+  }
+
+  // 3. Fallback to verified popular playlists
+  return [
+    {
+      id: '1134548194',
+      title: 'India Superhits Top 50',
+      subtitle: 'Most Streamed Hits across India',
+      language: 'All Languages',
+      image: 'https://c.saavncdn.com/editorial/IndiaSuperhitsTop50_20260918045504.jpg',
+      songCount: 50
+    },
+    {
+      id: '1134643225',
+      title: 'Telugu: India Superhits Top 50',
+      subtitle: 'Tollywood Top Chartbusters',
+      language: 'Telugu',
+      image: 'https://c.saavncdn.com/editorial/Telugu-IndiaSuperhitsTop50_20260918045504.jpg',
+      songCount: 50
+    },
+    {
+      id: '1266643840',
+      title: 'Trending Telugu Songs',
+      subtitle: 'Viral Tollywood Audio & Reels',
+      language: 'Telugu',
+      image: 'https://c.saavncdn.com/editorial/TrendingTeluguSongs_20260911054516.jpg',
+      songCount: 40
+    },
+    {
+      id: '1134543272',
+      title: 'Hindi: India Superhits Top 50',
+      subtitle: 'Bollywood Top Trending Hits',
+      language: 'Hindi',
+      image: 'https://c.saavncdn.com/editorial/Hindi-IndiaSuperhitsTop50_20260911054516.jpg',
+      songCount: 50
+    },
+    {
+      id: '1134651042',
+      title: 'Tamil: India Superhits Top 50',
+      subtitle: 'Kollywood Top Chartbusters',
+      language: 'Tamil',
+      image: 'https://c.saavncdn.com/editorial/Tamil-IndiaSuperhitsTop50_20260918045504.jpg',
+      songCount: 50
+    },
+    {
+      id: '47599074',
+      title: 'Now Trending - Pan India',
+      subtitle: 'Viral Hits Dominating the Nation',
+      language: 'Pan-India',
+      image: 'https://c.saavncdn.com/editorial/NowTrending_20260423085344_150x150.jpg',
+      songCount: 37
+    }
+  ];
+}
+
+/**
+ * Fetches all songs inside a trending playlist.
+ */
+export async function fetchPlaylistDetails(playlistId: string): Promise<JioSaavnPlaylistDetails | null> {
+  // 1. Try local server playlist route
+  try {
+    const res = await fetch(`/api/jiosaavn/playlist?id=${encodeURIComponent(playlistId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.songs && Array.isArray(data.songs)) {
+        const museSongs = data.songs.map(convertJioSaavnToMuseSong);
+        return {
+          id: playlistId,
+          title: decodeHtmlEntities(data.listname || data.title || 'Trending Playlist'),
+          subtitle: decodeHtmlEntities(data.subtitle || `${museSongs.length} Tracks`),
+          image: (data.image || '').replace('150x150', '500x500'),
+          songs: museSongs
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Server playlist fetch failed, trying direct:', err);
+  }
+
+  // 2. Direct API call
+  try {
+    const url = `https://www.jiosaavn.com/api.php?__call=playlist.getDetails&_format=json&cc=in&_marker=0%3F_marker%3D0&listid=${encodeURIComponent(playlistId)}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.songs && Array.isArray(data.songs)) {
+        const museSongs = data.songs.map(convertJioSaavnToMuseSong);
+        return {
+          id: playlistId,
+          title: decodeHtmlEntities(data.listname || data.title || 'Trending Playlist'),
+          subtitle: decodeHtmlEntities(data.subtitle || `${museSongs.length} Tracks`),
+          image: (data.image || '').replace('150x150', '500x500'),
+          songs: museSongs
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Direct playlist fetch failed:', err);
+  }
+
+  return null;
+}
+
+/**
+ * Fetches latest released songs, optionally filtered by language.
+ */
+export async function fetchLatestReleases(language?: string): Promise<Song[]> {
+  const langParam = language && language.toLowerCase() !== 'all' ? `?language=${encodeURIComponent(language)}` : '';
+
+  // 1. Try local server endpoint
+  try {
+    const res = await fetch(`/api/jiosaavn/latest-releases${langParam}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data.map(convertJioSaavnToMuseSong);
+      }
+    }
+  } catch (err) {
+    console.warn('Server latest releases fetch failed, trying direct:', err);
+  }
+
+  // 2. Direct search query fallback
+  try {
+    const query = language && language.toLowerCase() !== 'all' ? `Latest ${language} Songs` : 'Latest Songs';
+    return await searchJioSaavn(query, false);
+  } catch (err) {
+    console.warn('Fallback latest releases search failed:', err);
+  }
+
+  return [];
+}
+

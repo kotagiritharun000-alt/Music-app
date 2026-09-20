@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Smartphone, Download, QrCode, CheckCircle2, Copy, ExternalLink, ShieldCheck, Terminal, X } from 'lucide-react';
+import { ModernMusicLogo } from './ModernMusicLogo';
 
 interface MobileApkModalProps {
   onDismiss: () => void;
@@ -20,13 +21,11 @@ export const MobileApkModal: React.FC<MobileApkModalProps> = ({ onDismiss }) => 
       <div className="w-full max-w-xl bg-[#130905] border border-[#2C1910] rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5 max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#2C1910] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#22C55E]/20 border border-[#22C55E]/40 flex items-center justify-center text-[#22C55E]">
-              <Smartphone className="w-5 h-5" />
-            </div>
+          <div className="flex items-center gap-3">
+            <ModernMusicLogo size="sm" isPlaying={true} />
             <div>
               <h2 className="text-base font-bold text-white">Mobile Access & Android APK</h2>
-              <p className="text-xs text-[#8E9299]">Install on phone or compile native Android APK</p>
+              <p className="text-xs text-[#8E9299]">Install Muse on phone with official app icon</p>
             </div>
           </div>
           <button

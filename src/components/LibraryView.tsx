@@ -71,14 +71,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search songs, device music, JioSaavn tracks, artists..."
+          placeholder="Search songs, device music, Muse Stream tracks, artists..."
           className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-[#130905] border border-[#2C1910] text-sm text-white focus:outline-none focus:border-[#FF5014] placeholder:text-[#8E9299]"
         />
       </div>
 
       {/* Featured Portals Quick Access: JioSaavn & Device Music Hub */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        {/* JioSaavn Stream Engine Card */}
+        {/* Muse Stream Engine Card */}
         <div
           onClick={onOpenJioSaavn}
           className="p-4 rounded-2xl bg-gradient-to-br from-[#0B1528] via-[#08101F] to-[#040810] border border-cyan-500/40 hover:border-cyan-400 cursor-pointer shadow-lg shadow-cyan-500/10 transition-all group flex items-center justify-between gap-3"
@@ -90,14 +90,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <h4 className="text-sm font-bold text-white group-hover:text-cyan-400 transition-colors truncate">
-                  JioSaavn Online Streaming
+                  Muse Online Streaming
                 </h4>
                 <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 text-[9px] font-bold">
                   320Kbps HD
                 </span>
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                  Trending & New
+                </span>
               </div>
               <p className="text-[11px] text-[#8E9299] truncate">
-                Search & stream any Hindi, Telugu, Tamil, English track
+                Trending Playlists, latest 2026 releases & 80M+ songs in Telugu, Hindi, Tamil & English
               </p>
             </div>
           </div>

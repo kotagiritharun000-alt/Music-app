@@ -19,6 +19,7 @@ import { DeviceMusicHubModal } from './components/DeviceMusicHubModal';
 import { MobileApkModal } from './components/MobileApkModal';
 import { BgmGeneratorModal } from './components/BgmGeneratorModal';
 import { FullLyricsModal } from './components/FullLyricsModal';
+import { BrandLogoModal } from './components/BrandLogoModal';
 import { LibraryView } from './components/LibraryView';
 import {
   DeviceTrackRecord,
@@ -135,6 +136,7 @@ export const App: React.FC = () => {
   const [isMobileApkOpen, setIsMobileApkOpen] = useState<boolean>(false);
   const [isBgmGeneratorOpen, setIsBgmGeneratorOpen] = useState<boolean>(false);
   const [isFullLyricsOpen, setIsFullLyricsOpen] = useState<boolean>(false);
+  const [isBrandLogoOpen, setIsBrandLogoOpen] = useState<boolean>(false);
   const [isBgmModeActive, setIsBgmModeActive] = useState<boolean>(false);
   const [isWindowDragActive, setIsWindowDragActive] = useState<boolean>(false);
 
@@ -733,6 +735,7 @@ export const App: React.FC = () => {
         onOpenVoiceAssistant={() => setIsVoiceOpen(true)}
         onOpenJioSaavn={() => setIsJioSaavnOpen(true)}
         onOpenDeviceMusic={() => setIsDeviceMusicOpen(true)}
+        onOpenBrandLogo={() => setIsBrandLogoOpen(true)}
         deviceTrackCount={deviceTracks.length}
         onOpenMobileApk={() => setIsMobileApkOpen(true)}
       />
@@ -946,6 +949,13 @@ export const App: React.FC = () => {
           onSeekTo={handleSeekTo}
           onUpdateLyrics={handleUpdateLyrics}
           onDismiss={() => setIsFullLyricsOpen(false)}
+        />
+      )}
+
+      {isBrandLogoOpen && (
+        <BrandLogoModal
+          isPlaying={isPlaying}
+          onDismiss={() => setIsBrandLogoOpen(false)}
         />
       )}
     </div>
