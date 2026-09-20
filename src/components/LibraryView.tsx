@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Download, ListMusic, Music, Play, Search, Sparkles, Trash2, Flame, FolderOpen, Disc } from 'lucide-react';
+import { Download, ListMusic, Music, Play, Search, Sparkles, Trash2, HardDrive, Disc, Laptop2, Smartphone, Volume2 } from 'lucide-react';
 import { DownloadedAsset, PlaylistItem, Song } from '../types';
+import { DeviceTrackRecord } from '../services/deviceMusicStorage';
 
 interface LibraryViewProps {
   songs: Song[];
@@ -8,11 +9,13 @@ interface LibraryViewProps {
   currentSong: Song;
   isPlaying: boolean;
   downloadedAssets: DownloadedAsset[];
+  deviceTracks: DeviceTrackRecord[];
   onSelectSong: (song: Song) => void;
   onDeleteAsset: (id: string) => void;
   onDownloadAsset: (asset: DownloadedAsset) => void;
-  onOpenNaaSongs?: () => void;
-  onOpenLocalFilePicker?: () => void;
+  onOpenJioSaavn?: () => void;
+  onOpenDeviceMusic?: () => void;
+  onPlayDeviceTrack?: (track: DeviceTrackRecord) => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -21,11 +24,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   currentSong,
   isPlaying,
   downloadedAssets,
+  deviceTracks,
   onSelectSong,
   onDeleteAsset,
   onDownloadAsset,
-  onOpenNaaSongs,
-  onOpenLocalFilePicker
+  onOpenJioSaavn,
+  onOpenDeviceMusic,
+  onPlayDeviceTrack
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
@@ -49,6 +54,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return matchesSearch && playlist?.songIds.includes(song.id);
   });
 
+  const filteredDeviceTracks = deviceTracks.filter((track) => {
+    return (
+      track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      track.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      track.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
+
   return (
     <div className="w-full space-y-6 pb-12 animate-in fade-in">
       {/* Search & Filter Bar */}
@@ -58,68 +71,179 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search songs, Telugu movie soundtracks, artists, or downloaded files..."
+          placeholder="Search songs, device music, JioSaavn tracks, artists..."
           className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-[#130905] border border-[#2C1910] text-sm text-white focus:outline-none focus:border-[#FF5014] placeholder:text-[#8E9299]"
         />
       </div>
 
-      {/* Featured Portals Quick Access: NaaSongs & Local Downloaded Audio */}
+      {/* Featured Portals Quick Access: JioSaavn & Device Music Hub */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        {/* NaaSongs & SenSongs Hub Card */}
+        {/* JioSaavn Stream Engine Card */}
         <div
-          onClick={onOpenNaaSongs}
-          className="p-4 rounded-2xl bg-gradient-to-br from-[#1C0D06] via-[#150A04] to-[#0D0502] border border-[#FF5014]/40 hover:border-[#FF5014] cursor-pointer shadow-lg shadow-[#FF5014]/10 transition-all group flex items-center justify-between gap-3"
+          onClick={onOpenJioSaavn}
+          className="p-4 rounded-2xl bg-gradient-to-br from-[#0B1528] via-[#08101F] to-[#040810] border border-cyan-500/40 hover:border-cyan-400 cursor-pointer shadow-lg shadow-cyan-500/10 transition-all group flex items-center justify-between gap-3"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#FF5014] to-[#991B1B] flex items-center justify-center text-white shadow-md shadow-[#FF5014]/30 shrink-0 group-hover:scale-105 transition-transform">
-              <Flame className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-cyan-500/30 shrink-0 group-hover:scale-105 transition-transform">
+              <Disc className="w-6 h-6 text-white animate-spin-slow" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h4 className="text-sm font-bold text-white group-hover:text-[#FF7A45] transition-colors truncate">
-                  NaaSongs & SenSongs
+                <h4 className="text-sm font-bold text-white group-hover:text-cyan-400 transition-colors truncate">
+                  JioSaavn Online Streaming
                 </h4>
-                <span className="px-1.5 py-0.5 rounded bg-[#FF5014]/20 text-[#FF7A45] text-[9px] font-bold">
+                <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 text-[9px] font-bold">
                   320Kbps HD
                 </span>
               </div>
               <p className="text-[11px] text-[#8E9299] truncate">
-                Pushpa 2, Devara, RRR, Kalki 2898 AD, Guntur Kaaram hits
+                Search & stream any Hindi, Telugu, Tamil, English track
               </p>
             </div>
           </div>
-          <span className="p-2 rounded-xl bg-[#26150D] text-[#FF7A45] group-hover:bg-[#FF5014] group-hover:text-white transition-colors shrink-0">
+          <span className="p-2 rounded-xl bg-[#132038] text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white transition-colors shrink-0">
             <Play className="w-4 h-4 fill-current" />
           </span>
         </div>
 
-        {/* Open Downloaded Songs Card */}
+        {/* Device Music (Mobile Phone / Laptop) Card */}
         <div
-          onClick={onOpenLocalFilePicker}
-          className="p-4 rounded-2xl bg-gradient-to-br from-[#0F1C12] via-[#0A150D] to-[#050C07] border border-[#22C55E]/40 hover:border-[#22C55E] cursor-pointer shadow-lg shadow-[#22C55E]/10 transition-all group flex items-center justify-between gap-3"
+          onClick={onOpenDeviceMusic}
+          className="p-4 rounded-2xl bg-gradient-to-br from-[#071F15] via-[#0A1610] to-[#040D08] border border-emerald-500/40 hover:border-emerald-400 cursor-pointer shadow-lg shadow-emerald-500/10 transition-all group flex items-center justify-between gap-3"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#22C55E] to-[#15803D] flex items-center justify-center text-black shadow-md shadow-[#22C55E]/30 shrink-0 group-hover:scale-105 transition-transform">
-              <FolderOpen className="w-6 h-6 text-black" />
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-black shadow-md shadow-emerald-500/30 shrink-0 group-hover:scale-105 transition-transform">
+              <HardDrive className="w-6 h-6 text-black" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h4 className="text-sm font-bold text-white group-hover:text-[#22C55E] transition-colors truncate">
-                  Open Downloaded Songs
+                <h4 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+                  Device Music Library
                 </h4>
-                <span className="px-1.5 py-0.5 rounded bg-[#22C55E]/20 text-[#22C55E] text-[9px] font-bold">
-                  Device Files
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">
+                  {deviceTracks.length > 0 ? `${deviceTracks.length} Loaded` : 'Scan Device'}
                 </span>
               </div>
               <p className="text-[11px] text-[#8E9299] truncate">
-                Play downloaded .mp3 & .m4a files with 3D Atmos sound
+                {deviceTracks.length > 0
+                  ? 'All local songs from phone/laptop storage ready to play'
+                  : 'Grant permission to scan music from laptop or phone'}
               </p>
             </div>
           </div>
-          <span className="p-2 rounded-xl bg-[#142B1A] text-[#22C55E] group-hover:bg-[#22C55E] group-hover:text-black transition-colors shrink-0">
+          <span className="p-2 rounded-xl bg-[#0F2D1F] text-emerald-400 group-hover:bg-emerald-500 group-hover:text-black transition-colors shrink-0">
             <Play className="w-4 h-4 fill-current" />
           </span>
         </div>
+      </div>
+
+      {/* Device Music Dedicated Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-emerald-400" />
+            <span>Device Music (Phone & Laptop) ({filteredDeviceTracks.length})</span>
+          </h3>
+          <button
+            onClick={onOpenDeviceMusic}
+            className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+          >
+            <span>Scan / Manage Device Tracks</span>
+            <span>&rarr;</span>
+          </button>
+        </div>
+
+        {filteredDeviceTracks.length === 0 ? (
+          <div className="p-6 rounded-2xl bg-[#091119] border border-dashed border-[#1E293B] text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+              <HardDrive className="w-6 h-6" />
+            </div>
+            <div className="space-y-1 max-w-md mx-auto">
+              <h4 className="text-sm font-bold text-white">No device music visible yet</h4>
+              <p className="text-xs text-[#94A3B8]">
+                Grant permission to scan your phone or laptop music folder. All audio files (.mp3, .m4a, .wav, .flac) will be visible here and ready to play in Dolby Atmos.
+              </p>
+            </div>
+            <button
+              onClick={onOpenDeviceMusic}
+              className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs inline-flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all"
+            >
+              <HardDrive className="w-3.5 h-3.5" />
+              <span>Grant Permission & Scan Music</span>
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-[#1E293B] bg-[#0A101C] rounded-2xl border border-[#1E293B] overflow-hidden">
+            {filteredDeviceTracks.slice(0, 8).map((track) => {
+              const isCurrent = currentSong.id === track.id;
+              return (
+                <div
+                  key={track.id}
+                  onClick={() => onPlayDeviceTrack && onPlayDeviceTrack(track)}
+                  className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                    isCurrent ? 'bg-[#0E1E1C]' : 'hover:bg-[#10192A]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                      {isCurrent && isPlaying ? (
+                        <Volume2 className="w-5 h-5 animate-pulse" />
+                      ) : (
+                        <Play className="w-4 h-4 fill-current ml-0.5" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-bold truncate ${isCurrent ? 'text-emerald-400' : 'text-white'}`}>
+                          {track.title}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-mono font-bold border border-emerald-500/30">
+                          {track.format}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#94A3B8] truncate">
+                        {track.artist} • <span className="text-[#64748B]">{track.sizeFormatted}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-right hidden sm:block">
+                      <div className="text-xs font-mono text-[#E0D8D0]">{formatDuration(track.durationMs)}</div>
+                      <div className="text-[10px] text-[#64748B]">Dolby Atmos Ready</div>
+                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayDeviceTrack && onPlayDeviceTrack(track);
+                      }}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isCurrent
+                          ? 'bg-emerald-500 text-black font-bold'
+                          : 'bg-[#131C2E] text-emerald-400 hover:text-white border border-[#1E293B]'
+                      }`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredDeviceTracks.length > 8 && (
+              <div className="p-2.5 bg-[#080D17] text-center">
+                <button
+                  onClick={onOpenDeviceMusic}
+                  className="text-xs text-emerald-400 hover:underline font-semibold"
+                >
+                  View all {filteredDeviceTracks.length} device tracks &rarr;
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Smart Playlists Carousel */}
@@ -302,3 +426,4 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     </div>
   );
 };
+

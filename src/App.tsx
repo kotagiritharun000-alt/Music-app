@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SAMPLE_SONGS, SAMPLE_PLAYLISTS } from './data/sampleCatalog';
-import { NAA_SONGS_CATALOG, convertNaaSongToSong } from './data/naaSongsData';
 import { ProceduralAudioEngine } from './audio/proceduralAudioEngine';
 import { VoiceAiAssistant } from './ai/voiceAiAssistant';
 import { LyricsAiChatbot } from './ai/lyricsAiChatbot';
@@ -15,12 +14,20 @@ import { AudioTrimmerModal } from './components/AudioTrimmerModal';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 import { LyricsChatbotModal } from './components/LyricsChatbotModal';
 import { PrdArchitectureModal } from './components/PrdArchitectureModal';
-import { NaaSongsHubModal } from './components/NaaSongsHubModal';
-import { LocalAudioFileOpenerModal } from './components/LocalAudioFileOpenerModal';
+import { JioSaavnHubModal } from './components/JioSaavnHubModal';
+import { DeviceMusicHubModal } from './components/DeviceMusicHubModal';
 import { MobileApkModal } from './components/MobileApkModal';
 import { BgmGeneratorModal } from './components/BgmGeneratorModal';
 import { FullLyricsModal } from './components/FullLyricsModal';
 import { LibraryView } from './components/LibraryView';
+import {
+  DeviceTrackRecord,
+  loadAllDeviceTracks,
+  saveDeviceTracks,
+  deleteDeviceTrack,
+  clearAllDeviceTracks
+} from './services/deviceMusicStorage';
+import { convertDeviceTrackToSong } from './services/deviceMusicService';
 import {
   AudioSpatialConfig,
   BgmStem,
@@ -36,13 +43,10 @@ import {
 } from './types';
 import { CheckCircle2, Upload } from 'lucide-react';
 
-const ALL_INITIAL_SONGS: Song[] = [
-  ...NAA_SONGS_CATALOG.map(convertNaaSongToSong),
-  ...SAMPLE_SONGS
-];
+const ALL_INITIAL_SONGS: Song[] = [...SAMPLE_SONGS];
 
 export const App: React.FC = () => {
-  // Master Catalog State (dynamically expandable with local & NaaSongs tracks)
+  // Master Catalog State (dynamically expandable with local & device tracks)
   const [songs, setSongs] = useState<Song[]>(ALL_INITIAL_SONGS);
   const [currentSongIndex, setCurrentSongIndex] = useState<number>(0);
   const currentSong = songs[currentSongIndex] || ALL_INITIAL_SONGS[0];
@@ -58,7 +62,7 @@ export const App: React.FC = () => {
   const [frequencyBands, setFrequencyBands] = useState<number[]>(Array(16).fill(0.15));
   const [volume, setVolume] = useState<number>(85);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [favoriteSongIds, setFavoriteSongIds] = useState<Set<string>>(new Set(['naa_pushpa2_pushpa', 'naa_devara_fear']));
+  const [favoriteSongIds, setFavoriteSongIds] = useState<Set<string>>(new Set(['muse_track_1', 'muse_track_2']));
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ title: string; subtitle: string } | null>(null);
@@ -125,13 +129,66 @@ export const App: React.FC = () => {
   const [isVoiceOpen, setIsVoiceOpen] = useState<boolean>(false);
   const [isLyricsChatOpen, setIsLyricsChatOpen] = useState<boolean>(false);
   const [isPrdOpen, setIsPrdOpen] = useState<boolean>(false);
-  const [isNaaSongsOpen, setIsNaaSongsOpen] = useState<boolean>(false);
-  const [isLocalFilePickerOpen, setIsLocalFilePickerOpen] = useState<boolean>(false);
+  const [isJioSaavnOpen, setIsJioSaavnOpen] = useState<boolean>(false);
+  const [isDeviceMusicOpen, setIsDeviceMusicOpen] = useState<boolean>(false);
+  const [deviceTracks, setDeviceTracks] = useState<DeviceTrackRecord[]>([]);
   const [isMobileApkOpen, setIsMobileApkOpen] = useState<boolean>(false);
   const [isBgmGeneratorOpen, setIsBgmGeneratorOpen] = useState<boolean>(false);
   const [isFullLyricsOpen, setIsFullLyricsOpen] = useState<boolean>(false);
   const [isBgmModeActive, setIsBgmModeActive] = useState<boolean>(false);
   const [isWindowDragActive, setIsWindowDragActive] = useState<boolean>(false);
+
+  // Load stored device tracks on startup from IndexedDB
+  useEffect(() => {
+    const loadStoredTracks = async () => {
+      try {
+        const stored = await loadAllDeviceTracks();
+        setDeviceTracks(stored);
+      } catch (err) {
+        console.error('Failed to load device tracks:', err);
+      }
+    };
+    loadStoredTracks();
+  }, []);
+
+  const handleAddDeviceTracks = async (newTracks: DeviceTrackRecord[]) => {
+    try {
+      await saveDeviceTracks(newTracks);
+      const all = await loadAllDeviceTracks();
+      setDeviceTracks(all);
+      showToast(
+        'Device Music Library Updated',
+        `${newTracks.length} local audio track${newTracks.length > 1 ? 's' : ''} stored and ready to play.`
+      );
+    } catch (e) {
+      console.error('Failed to save device tracks:', e);
+    }
+  };
+
+  const handleDeleteDeviceTrack = async (id: string) => {
+    try {
+      await deleteDeviceTrack(id);
+      setDeviceTracks((prev) => prev.filter((t) => t.id !== id));
+      showToast('Track Removed', 'Audio track removed from local library.');
+    } catch (e) {
+      console.error('Failed to delete track:', e);
+    }
+  };
+
+  const handleClearAllDeviceTracks = async () => {
+    try {
+      await clearAllDeviceTracks();
+      setDeviceTracks([]);
+      showToast('Device Library Cleared', 'All local audio tracks removed.');
+    } catch (e) {
+      console.error('Failed to clear tracks:', e);
+    }
+  };
+
+  const handlePlayDeviceTrack = (record: DeviceTrackRecord) => {
+    const song = convertDeviceTrackToSong(record);
+    handleLoadCustomSong(song);
+  };
 
   const showToast = (title: string, subtitle: string) => {
     setToastMessage({ title, subtitle });
@@ -674,8 +731,9 @@ export const App: React.FC = () => {
         onToggleView={() => setActiveView((v) => (v === 'player' ? 'library' : 'player'))}
         onOpenPrd={() => setIsPrdOpen(true)}
         onOpenVoiceAssistant={() => setIsVoiceOpen(true)}
-        onOpenNaaSongs={() => setIsNaaSongsOpen(true)}
-        onOpenLocalFilePicker={() => setIsLocalFilePickerOpen(true)}
+        onOpenJioSaavn={() => setIsJioSaavnOpen(true)}
+        onOpenDeviceMusic={() => setIsDeviceMusicOpen(true)}
+        deviceTrackCount={deviceTracks.length}
         onOpenMobileApk={() => setIsMobileApkOpen(true)}
       />
 
@@ -768,6 +826,7 @@ export const App: React.FC = () => {
             currentSong={currentSong}
             isPlaying={isPlaying}
             downloadedAssets={downloadedAssets}
+            deviceTracks={deviceTracks}
             onSelectSong={(song) => {
               const idx = songs.findIndex((s) => s.id === song.id);
               if (idx !== -1) {
@@ -779,8 +838,9 @@ export const App: React.FC = () => {
             }}
             onDeleteAsset={handleDeleteAsset}
             onDownloadAsset={handleDownloadAsset}
-            onOpenNaaSongs={() => setIsNaaSongsOpen(true)}
-            onOpenLocalFilePicker={() => setIsLocalFilePickerOpen(true)}
+            onOpenJioSaavn={() => setIsJioSaavnOpen(true)}
+            onOpenDeviceMusic={() => setIsDeviceMusicOpen(true)}
+            onPlayDeviceTrack={handlePlayDeviceTrack}
           />
         )}
       </main>
@@ -847,22 +907,23 @@ export const App: React.FC = () => {
         <PrdArchitectureModal onDismiss={() => setIsPrdOpen(false)} />
       )}
 
-      {isNaaSongsOpen && (
-        <NaaSongsHubModal
+      {isJioSaavnOpen && (
+        <JioSaavnHubModal
           currentSongId={currentSong.id}
           onSelectSong={handleLoadCustomSong}
-          onOpenLocalFilePicker={() => setIsLocalFilePickerOpen(true)}
-          onDismiss={() => setIsNaaSongsOpen(false)}
+          onDismiss={() => setIsJioSaavnOpen(false)}
         />
       )}
 
-      {isLocalFilePickerOpen && (
-        <LocalAudioFileOpenerModal
-          onLoadSong={handleLoadCustomSong}
-          savedLocalFiles={savedLocalFiles}
-          onSaveLocalFile={handleSaveLocalFile}
-          onDeleteLocalFile={handleDeleteLocalFile}
-          onDismiss={() => setIsLocalFilePickerOpen(false)}
+      {isDeviceMusicOpen && (
+        <DeviceMusicHubModal
+          deviceTracks={deviceTracks}
+          currentSongId={currentSong.id}
+          onSelectSong={handleLoadCustomSong}
+          onAddTracks={handleAddDeviceTracks}
+          onDeleteTrack={handleDeleteDeviceTrack}
+          onClearAllTracks={handleClearAllDeviceTracks}
+          onDismiss={() => setIsDeviceMusicOpen(false)}
         />
       )}
 

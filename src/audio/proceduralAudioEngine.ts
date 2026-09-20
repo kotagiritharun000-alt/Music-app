@@ -173,6 +173,17 @@ export class ProceduralAudioEngine {
         }
       }
     });
+
+    this.audioElement.addEventListener('error', () => {
+      if (this.audioElement && this.currentSong?.audioUrl && !this.audioElement.src.includes('/api/audio-proxy')) {
+        console.log('[AudioEngine] Direct playback fallback to local proxy stream...');
+        this.audioElement.src = `/api/audio-proxy?url=${encodeURIComponent(this.currentSong.audioUrl)}`;
+        this.audioElement.load();
+        if (this.isPlayingState) {
+          this.audioElement.play().catch(e => console.warn('Audio proxy playback notice:', e));
+        }
+      }
+    });
   }
 
   private connectAudioElement() {

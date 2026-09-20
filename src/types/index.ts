@@ -48,7 +48,7 @@ export interface Song {
   hasBgmReady?: boolean;
   fullLyricsText?: string;
   teluguLyrics?: string;
-  sourcePortal?: 'NaaSongs' | 'SenSongs' | 'LocalFile' | 'MuseOriginal';
+  sourcePortal?: 'NaaSongs' | 'SenSongs' | 'LocalFile' | 'MuseOriginal' | 'JioSaavn';
   coverImage?: string;
   year?: string;
   movieName?: string;
